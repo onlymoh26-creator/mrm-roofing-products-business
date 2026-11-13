@@ -1,8 +1,9 @@
 
 /* =========================================================
    MABATI ROLLING MILLS
-   PRO-FORMA INVOICE SYSTEM
+   COMPLETE PRO-FORMA INVOICE SYSTEM
    File: invoice.js
+   Backend: Cloudflare Worker + D1 + R2
    ========================================================= */
 
 (() => {
@@ -12,21 +13,22 @@
      1. CONFIGURATION
      ======================================================= */
 
-  const API_BASE = "https://mrm-invoice-api.onlymoh26.workers.dev";
+  const API_BASE =
+    "https://mrm-invoice-api.onlymoh26.workers.dev";
 
-  const TURNSTILE_SITE_KEY = "0x4AAAAAAF_kiy_v__Tp3ulP";
+  const TURNSTILE_SITE_KEY =
+    "0x4AAAAAAF_kiy_v__Tp3ulP";
 
   const WHATSAPP_NUMBER = "254733608974";
 
   const CURRENCY = "KES";
 
   let catalogue = [];
-  let turnstileWidgetId = null;
   let turnstileReady = false;
-  let invoiceItems = [];
+  let turnstileWidgetId = null;
 
   /* =======================================================
-     2. HELPER FUNCTIONS
+     2. GENERAL HELPERS
      ======================================================= */
 
   function escapeHTML(value) {
@@ -68,7 +70,11 @@
     }
 
     if (!response.ok || data.success === false) {
-      throw new Error(data.message || data.error || "The server could not complete your request.");
+      throw new Error(
+        data.message ||
+        data.error ||
+        "The invoice server could not complete your request."
+      );
     }
 
     return data;
@@ -76,6 +82,7 @@
 
   function showMessage(message, type = "info") {
     const box = document.getElementById("mrmInvoiceMessage");
+
     if (!box) return;
 
     box.textContent = message;
@@ -94,19 +101,21 @@
     if (!button) return;
 
     button.disabled = loading;
+
     button.textContent = loading
       ? "PROCESSING INVOICE..."
       : "CREATE PRO-FORMA INVOICE";
   }
 
   /* =======================================================
-     3. INVOICE SECTION STYLES
+     3. INVOICE STYLES
      ======================================================= */
 
   function addStyles() {
     if (document.getElementById("mrmInvoiceStyles")) return;
 
     const style = document.createElement("style");
+
     style.id = "mrmInvoiceStyles";
 
     style.textContent = `
@@ -119,7 +128,7 @@
       #mrmInvoiceSection .mrm-invoice-container {
         max-width: 1050px;
         margin: auto;
-        background: #fff;
+        background: #ffffff;
         padding: 30px;
         border-radius: 12px;
         box-shadow: 0 5px 25px rgba(0,0,0,.07);
@@ -135,12 +144,18 @@
         text-align: center;
         color: #64748b;
         margin-bottom: 30px;
+        line-height: 1.6;
       }
 
       #mrmInvoiceSection .mrm-invoice-grid {
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: 16px;
+      }
+
+      #mrmInvoiceSection .mrm-invoice-field {
+        margin-bottom: 18px;
+        min-width: 0;
       }
 
       #mrmInvoiceSection label {
@@ -157,13 +172,8 @@
         padding: 12px;
         border: 1px solid #cbd5e1;
         border-radius: 6px;
-        background: #fff;
+        background: #ffffff;
         font: inherit;
-      }
-
-      #mrmInvoiceSection .mrm-invoice-field {
-        margin-bottom: 18px;
-        min-width: 0;
       }
 
       #mrmInvoiceSection .mrm-invoice-items {
@@ -202,7 +212,7 @@
         margin-top: 25px;
         padding: 16px;
         background: #12365a;
-        color: #fff;
+        color: #ffffff;
         font-size: 15px;
       }
 
@@ -263,7 +273,7 @@
         text-decoration: none;
         font-weight: 700;
         background: #12365a;
-        color: white;
+        color: #ffffff;
       }
 
       #mrmInvoiceSection .mrm-invoice-results a.mrm-whatsapp {
@@ -304,13 +314,14 @@
   }
 
   /* =======================================================
-     4. CREATE THE INVOICE SECTION
+     4. CREATE INVOICE SECTION
      ======================================================= */
 
   function createInvoiceSection() {
     if (document.getElementById("mrmInvoiceSection")) return;
 
     const section = document.createElement("section");
+
     section.id = "mrmInvoiceSection";
 
     section.innerHTML = `
@@ -328,23 +339,44 @@
           <div class="mrm-invoice-grid">
 
             <div class="mrm-invoice-field">
-              <label for="mrmCustomerName">Customer / Company Name *</label>
-              <input id="mrmCustomerName" name="customerName"
-                type="text" required maxlength="120"
+              <label for="mrmCustomerName">
+                Customer / Company Name *
+              </label>
+
+              <input
+                id="mrmCustomerName"
+                name="customerName"
+                type="text"
+                required
+                maxlength="120"
                 placeholder="Enter customer or company name">
             </div>
 
             <div class="mrm-invoice-field">
-              <label for="mrmCustomerPhone">Phone Number *</label>
-              <input id="mrmCustomerPhone" name="customerPhone"
-                type="tel" required maxlength="20"
+              <label for="mrmCustomerPhone">
+                Phone Number *
+              </label>
+
+              <input
+                id="mrmCustomerPhone"
+                name="customerPhone"
+                type="tel"
+                required
+                maxlength="30"
                 placeholder="Enter phone number">
             </div>
 
             <div class="mrm-invoice-field">
-              <label for="mrmCustomerLocation">Delivery Location *</label>
-              <input id="mrmCustomerLocation" name="customerLocation"
-                type="text" required maxlength="180"
+              <label for="mrmCustomerLocation">
+                Delivery Location *
+              </label>
+
+              <input
+                id="mrmCustomerLocation"
+                name="customerLocation"
+                type="text"
+                required
+                maxlength="200"
                 placeholder="Enter delivery location">
             </div>
 
@@ -373,11 +405,17 @@
           </p>
 
           <div class="mrm-invoice-field" style="margin-top:25px">
+
             <label>Security Verification *</label>
+
             <div id="mrmTurnstileContainer"></div>
+
           </div>
 
-          <div id="mrmInvoiceMessage" class="mrm-invoice-message"></div>
+          <div
+            id="mrmInvoiceMessage"
+            class="mrm-invoice-message">
+          </div>
 
           <button type="submit" id="mrmCreateInvoiceBtn">
             CREATE PRO-FORMA INVOICE
@@ -402,7 +440,11 @@
       const quoteSection = quoteForm.closest("section");
 
       if (quoteSection && quoteSection.parentNode) {
-        quoteSection.parentNode.insertBefore(section, quoteSection.nextSibling);
+        quoteSection.parentNode.insertBefore(
+          section,
+          quoteSection.nextSibling
+        );
+
         return;
       }
     }
@@ -417,11 +459,13 @@
   }
 
   /* =======================================================
-     5. ADD NAVIGATION LINK
+     5. NAVIGATION LINK
      ======================================================= */
 
   function addNavigationLink() {
-    const navLists = document.querySelectorAll("header nav ul, nav ul");
+    const navLists = document.querySelectorAll(
+      "header nav ul, nav ul"
+    );
 
     navLists.forEach(list => {
       if (list.querySelector('[href="#mrmInvoiceSection"]')) return;
@@ -446,58 +490,77 @@
 
     catalogue = Array.isArray(response.products)
       ? response.products
-      : Array.isArray(response.catalogue)
-        ? response.catalogue
-        : [];
+      : [];
 
     if (!catalogue.length) {
-      throw new Error("The server catalogue is empty or unavailable.");
+      throw new Error("The server product catalogue is empty.");
     }
 
     addInvoiceItem();
   }
 
   /* =======================================================
-     7. PRODUCT SELECT OPTIONS
+     7. PRODUCT OPTIONS
      ======================================================= */
 
   function productOptions() {
     return `
       <option value="">Select roofing product</option>
+
       ${catalogue.map((product, index) => `
         <option value="${index}">
-          ${escapeHTML(product.name || product.product || product.title || `Product ${index + 1}`)}
+          ${escapeHTML(product.name)}
         </option>
       `).join("")}
     `;
   }
 
+  /* =======================================================
+     8. ADD PRODUCT ROW
+     ======================================================= */
+
   function addInvoiceItem() {
     const container = document.getElementById("mrmInvoiceItems");
+
     if (!container) return;
 
     const row = document.createElement("div");
+
     row.className = "mrm-invoice-item";
 
     row.innerHTML = `
       <div class="mrm-invoice-field mrm-product-field">
+
         <label>Roofing Product *</label>
+
         <select class="mrm-product" required>
           ${productOptions()}
         </select>
+
       </div>
 
       <div class="mrm-invoice-field">
+
         <label>Gauge / Specification</label>
-        <select class="mrm-gauge">
-          <option value="">Select gauge</option>
+
+        <select class="mrm-gauge" required>
+          <option value="">Select product first</option>
         </select>
+
       </div>
 
       <div class="mrm-invoice-field">
+
         <label>Quantity / Metres *</label>
-        <input class="mrm-quantity" type="number"
-          min="0.1" step="0.1" value="2" required>
+
+        <input
+          class="mrm-quantity"
+          type="number"
+          min="0.1"
+          step="0.1"
+          value="2"
+          required>
+
       </div>
 
       <button type="button" class="mrm-remove-item">
@@ -507,62 +570,79 @@
 
     container.appendChild(row);
 
-    row.querySelector(".mrm-product").addEventListener("change", () => {
-      updateGaugeOptions(row);
-      updateTotal();
-    });
+    row.querySelector(".mrm-product").addEventListener(
+      "change",
+      () => updateGaugeOptions(row)
+    );
 
-    row.querySelector(".mrm-gauge").addEventListener("change", updateTotal);
+    row.querySelector(".mrm-gauge").addEventListener(
+      "change",
+      updateTotal
+    );
 
-    row.querySelector(".mrm-quantity").addEventListener("input", updateTotal);
+    row.querySelector(".mrm-quantity").addEventListener(
+      "input",
+      updateTotal
+    );
 
-    row.querySelector(".mrm-remove-item").addEventListener("click", () => {
-      row.remove();
-      updateTotal();
-    });
-
-    invoiceItems.push(row);
+    row.querySelector(".mrm-remove-item").addEventListener(
+      "click",
+      () => {
+        row.remove();
+        updateTotal();
+      }
+    );
 
     updateTotal();
   }
 
   /* =======================================================
-     8. GAUGE OPTIONS
+     9. GAUGE OPTIONS FROM SERVER PRICES
      ======================================================= */
 
   function updateGaugeOptions(row) {
     const productIndex = row.querySelector(".mrm-product").value;
+
     const gaugeSelect = row.querySelector(".mrm-gauge");
 
-    gaugeSelect.innerHTML = '<option value="">Select gauge</option>';
+    gaugeSelect.innerHTML = "";
 
-    if (productIndex === "") return;
+    if (productIndex === "") {
+      gaugeSelect.innerHTML =
+        '<option value="">Select product first</option>';
+
+      updateTotal();
+      return;
+    }
 
     const product = catalogue[Number(productIndex)];
 
-    const gauges = product.gauges || product.specifications || [];
+    const prices = product?.prices || {};
+
+    const gauges = Object.keys(prices);
+
+    if (!gauges.length) {
+      gaugeSelect.innerHTML =
+        '<option value="">Unavailable</option>';
+
+      updateTotal();
+      return;
+    }
 
     gauges.forEach(gauge => {
-      const value = typeof gauge === "object"
-        ? gauge.gauge || gauge.name || gauge.value
-        : gauge;
-
-      if (value === undefined || value === null) return;
-
       const option = document.createElement("option");
-      option.value = String(value);
-      option.textContent = String(value);
+
+      option.value = gauge;
+      option.textContent = gauge || "Not applicable";
 
       gaugeSelect.appendChild(option);
     });
 
-    if (!gauges.length) {
-      gaugeSelect.innerHTML = '<option value="Standard">Standard</option>';
-    }
+    updateTotal();
   }
 
   /* =======================================================
-     9. INDICATIVE TOTAL
+     10. COLLECT VALIDATED PRODUCT INPUT
      ======================================================= */
 
   function getSelectedItems() {
@@ -570,10 +650,18 @@
 
     return Array.from(rows).map(row => {
       const productIndex = row.querySelector(".mrm-product").value;
-      const gauge = row.querySelector(".mrm-gauge").value;
-      const quantity = Number(row.querySelector(".mrm-quantity").value);
 
-      if (productIndex === "" || !Number.isFinite(quantity) || quantity <= 0) {
+      const gauge = row.querySelector(".mrm-gauge").value;
+
+      const quantity = Number(
+        row.querySelector(".mrm-quantity").value
+      );
+
+      if (
+        productIndex === "" ||
+        !Number.isFinite(quantity) ||
+        quantity <= 0
+      ) {
         return null;
       }
 
@@ -581,40 +669,58 @@
 
       if (!product) return null;
 
+      if (!Object.prototype.hasOwnProperty.call(product.prices, gauge)) {
+        return null;
+      }
+
       return {
-        product: product.name || product.product || product.title,
-        productId: product.id || product.productId || null,
+        name: product.name,
+        category: product.category,
+        unit: product.unit,
         gauge,
-        quantity,
-        unit: product.unit || "metres"
+        quantity
       };
     }).filter(Boolean);
   }
 
+  /* =======================================================
+     11. INDICATIVE TOTAL
+     ======================================================= */
+
   function updateTotal() {
     const rows = document.querySelectorAll(".mrm-invoice-item");
+
     let total = 0;
 
     rows.forEach(row => {
       const productIndex = row.querySelector(".mrm-product").value;
-      const quantity = Number(row.querySelector(".mrm-quantity").value);
 
-      if (productIndex === "" || !Number.isFinite(quantity) || quantity <= 0) {
+      const gauge = row.querySelector(".mrm-gauge").value;
+
+      const quantity = Number(
+        row.querySelector(".mrm-quantity").value
+      );
+
+      if (
+        productIndex === "" ||
+        !Number.isFinite(quantity) ||
+        quantity <= 0
+      ) {
         return;
       }
 
       const product = catalogue[Number(productIndex)];
 
-      if (!product) return;
+      if (
+        !product ||
+        !Object.prototype.hasOwnProperty.call(product.prices, gauge)
+      ) {
+        return;
+      }
 
-      const price = Number(
-        product.price ??
-        product.unitPrice ??
-        product.rate ??
-        0
-      );
+      const unitPrice = Number(product.prices[gauge]);
 
-      total += price * quantity;
+      total += unitPrice * quantity;
     });
 
     const totalElement = document.getElementById("mrmInvoiceTotal");
@@ -625,13 +731,17 @@
   }
 
   /* =======================================================
-     10. TURNSTILE
+     12. CLOUDFLARE TURNSTILE
      ======================================================= */
 
   function renderTurnstile() {
-    const container = document.getElementById("mrmTurnstileContainer");
+    const container = document.getElementById(
+      "mrmTurnstileContainer"
+    );
 
-    if (!container || !turnstileReady || !window.turnstile) return;
+    if (!container || !turnstileReady || !window.turnstile) {
+      return;
+    }
 
     if (turnstileWidgetId !== null) return;
 
@@ -639,19 +749,27 @@
       turnstileWidgetId = window.turnstile.render(container, {
         sitekey: TURNSTILE_SITE_KEY,
         theme: "light",
+
         callback: function(token) {
           container.dataset.token = token;
         },
+
         "expired-callback": function() {
           container.dataset.token = "";
         },
+
         "error-callback": function() {
           container.dataset.token = "";
-          showMessage("Security verification failed. Please try again.", "error");
+
+          showMessage(
+            "Security verification failed. Please try again.",
+            "error"
+          );
         }
       });
+
     } catch (error) {
-      console.error("Turnstile error:", error);
+      console.error("MRM Turnstile error:", error);
     }
   }
 
@@ -661,43 +779,57 @@
   };
 
   function resetTurnstile() {
-    const container = document.getElementById("mrmTurnstileContainer");
+    const container = document.getElementById(
+      "mrmTurnstileContainer"
+    );
 
     if (container) {
       container.dataset.token = "";
     }
 
-    if (window.turnstile && turnstileWidgetId !== null) {
+    if (
+      window.turnstile &&
+      turnstileWidgetId !== null
+    ) {
       window.turnstile.reset(turnstileWidgetId);
     }
   }
 
   /* =======================================================
-     11. CREATE PDF
+     13. GENERATE PRO-FORMA PDF
      ======================================================= */
 
   function createInvoicePDF(invoice) {
     if (!window.jspdf || !window.jspdf.jsPDF) {
-      throw new Error("PDF library is missing. Check the jsPDF script in index.html.");
+      throw new Error(
+        "The PDF library is missing. Check the jsPDF script in index.html."
+      );
     }
 
     const { jsPDF } = window.jspdf;
+
     const pdf = new jsPDF();
 
     const pageWidth = pdf.internal.pageSize.getWidth();
+
     const margin = 15;
 
-    const invoiceNumber = invoice.invoiceNumber || invoice.invoice_number;
-    const items = invoice.items || invoice.verifiedItems || [];
-    const subtotal = Number(invoice.subtotal || invoice.total || 0);
-    const total = Number(invoice.total || subtotal);
-    const invoiceDate = invoice.date || invoice.invoiceDate || new Date().toLocaleDateString("en-KE");
+    const invoiceNumber = invoice.invoiceNumber;
+
+    const items = invoice.items || [];
+
+    const total = Number(invoice.total || 0);
+
+    const invoiceDate = new Date().toLocaleDateString("en-KE");
 
     let y = 20;
+
+    /* COMPANY HEADER */
 
     pdf.setFont("helvetica", "bold");
     pdf.setFontSize(19);
     pdf.setTextColor(18, 54, 90);
+
     pdf.text("MABATI ROLLING MILLS", margin, y);
 
     y += 8;
@@ -705,104 +837,159 @@
     pdf.setFont("helvetica", "normal");
     pdf.setFontSize(9);
     pdf.setTextColor(80, 80, 80);
+
     pdf.text("ROOFING PRODUCTS & SOLUTIONS", margin, y);
 
-    pdf.text("Phone: 0733 608 974", pageWidth - margin, 20, {
-      align: "right"
-    });
+    pdf.text(
+      "Phone: 0733 608 974",
+      pageWidth - margin,
+      20,
+      { align: "right" }
+    );
 
     y += 13;
 
     pdf.setDrawColor(18, 54, 90);
-    pdf.line(margin, y, pageWidth - margin, y);
+
+    pdf.line(
+      margin,
+      y,
+      pageWidth - margin,
+      y
+    );
 
     y += 12;
+
+    /* INVOICE TITLE */
 
     pdf.setFont("helvetica", "bold");
     pdf.setFontSize(17);
     pdf.setTextColor(18, 54, 90);
-    pdf.text("PRO-FORMA INVOICE", margin, y);
 
-    pdf.setFontSize(10);
-    pdf.setTextColor(0, 0, 0);
+    pdf.text("PRO-FORMA INVOICE", margin, y);
 
     y += 10;
 
     pdf.setFont("helvetica", "normal");
-    pdf.text(`Invoice Number: ${invoiceNumber || "Pending"}`, margin, y);
-    pdf.text(`Date: ${invoiceDate}`, pageWidth - margin, y, { align: "right" });
+    pdf.setFontSize(10);
+    pdf.setTextColor(0, 0, 0);
+
+    pdf.text(
+      `Invoice Number: ${invoiceNumber}`,
+      margin,
+      y
+    );
+
+    pdf.text(
+      `Date: ${invoiceDate}`,
+      pageWidth - margin,
+      y,
+      { align: "right" }
+    );
 
     y += 12;
 
+    /* CUSTOMER DETAILS */
+
     pdf.setFont("helvetica", "bold");
+
     pdf.text("BILL TO:", margin, y);
 
     y += 7;
 
     pdf.setFont("helvetica", "normal");
-    pdf.text(`Customer: ${document.getElementById("mrmCustomerName").value}`, margin, y);
+
+    pdf.text(
+      `Customer: ${document.getElementById("mrmCustomerName").value.trim()}`,
+      margin,
+      y
+    );
 
     y += 6;
 
-    pdf.text(`Phone: ${document.getElementById("mrmCustomerPhone").value}`, margin, y);
+    pdf.text(
+      `Phone: ${document.getElementById("mrmCustomerPhone").value.trim()}`,
+      margin,
+      y
+    );
 
     y += 6;
 
-    pdf.text(`Location: ${document.getElementById("mrmCustomerLocation").value}`, margin, y);
+    pdf.text(
+      `Location: ${document.getElementById("mrmCustomerLocation").value.trim()}`,
+      margin,
+      y
+    );
 
     y += 12;
 
-    const tableRows = items.map((item, index) => {
-      const name = item.product || item.name || item.description || "Roofing Product";
-      const gauge = item.gauge || item.specification || "Standard";
-      const quantity = Number(item.quantity || 0);
-      const unit = item.unit || "metres";
-      const unitPrice = Number(item.unitPrice || item.price || item.rate || 0);
-      const lineTotal = Number(item.lineTotal || item.amount || quantity * unitPrice);
+    /* PRODUCT TABLE */
 
+    const tableRows = items.map((item, index) => {
       return [
         String(index + 1),
-        `${name} (${gauge})`,
-        `${quantity} ${unit}`,
-        money(unitPrice),
-        money(lineTotal)
+        `${item.name} (${item.gauge || "Standard"})`,
+        `${item.quantity} ${item.unit}`,
+        money(item.unitPrice),
+        money(item.total)
       ];
     });
 
-    if (pdf.autoTable) {
-      pdf.autoTable({
-        startY: y,
-        head: [["No.", "Description", "Quantity", "Unit Price", "Amount"]],
-        body: tableRows,
-        theme: "grid",
-        styles: {
-          fontSize: 8,
-          cellPadding: 3
-        },
-        headStyles: {
-          fillColor: [18, 54, 90]
-        },
-        margin: {
-          left: margin,
-          right: margin
-        }
-      });
-
-      y = pdf.lastAutoTable.finalY + 12;
-    } else {
-      throw new Error("PDF table library is missing. Check the jsPDF AutoTable script.");
+    if (typeof pdf.autoTable !== "function") {
+      throw new Error(
+        "PDF table library is missing. Check the AutoTable script in index.html."
+      );
     }
 
-    if (y > 240) {
+    pdf.autoTable({
+      startY: y,
+
+      head: [[
+        "No.",
+        "Description",
+        "Quantity",
+        "Unit Price",
+        "Amount"
+      ]],
+
+      body: tableRows,
+
+      theme: "grid",
+
+      styles: {
+        fontSize: 8,
+        cellPadding: 3
+      },
+
+      headStyles: {
+        fillColor: [18, 54, 90]
+      },
+
+      margin: {
+        left: margin,
+        right: margin
+      }
+    });
+
+    y = pdf.lastAutoTable.finalY + 12;
+
+    /* TOTAL */
+
+    if (y > 245) {
       pdf.addPage();
       y = 20;
     }
 
     pdf.setFont("helvetica", "bold");
     pdf.setFontSize(12);
-    pdf.text(`TOTAL: ${money(total)}`, pageWidth - margin, y, {
-      align: "right"
-    });
+    pdf.setTextColor(18, 54, 90);
+
+    pdf.text(
+      `TOTAL: ${money(total)}`,
+      pageWidth - margin,
+      y,
+      { align: "right" }
+    );
 
     y += 12;
 
@@ -812,13 +999,22 @@
     pdf.setTextColor(190, 35, 35);
     pdf.setLineWidth(1.1);
 
-    pdf.rect(pageWidth - 65, y, 48, 15);
+    pdf.rect(
+      pageWidth - 65,
+      y,
+      48,
+      15
+    );
 
     pdf.setFont("helvetica", "bold");
     pdf.setFontSize(13);
-    pdf.text("PENDING", pageWidth - 41, y + 10, {
-      align: "center"
-    });
+
+    pdf.text(
+      "PENDING",
+      pageWidth - 41,
+      y + 10,
+      { align: "center" }
+    );
 
     y += 23;
 
@@ -831,6 +1027,7 @@
 
     pdf.setTextColor(18, 54, 90);
     pdf.setFontSize(11);
+
     pdf.text("TERMS & CONDITIONS", margin, y);
 
     y += 7;
@@ -841,17 +1038,27 @@
 
     const terms = [
       "1. NO CASH PAYMENTS: All payments must be made through official authorised payment channels, including approved Paybill or bank transfer. No cash payments are accepted.",
+
       "2. ORDER CONFIRMATION: Confirm product descriptions, gauges, thickness, lengths, colours, quantities and delivery details before payment and processing.",
+
       "3. PRODUCT QUALITY: Materials supplied shall correspond to the agreed product descriptions and specifications, subject to manufacturer standards and availability.",
+
       "4. DELIVERY ARRANGEMENTS: Delivery timelines and charges shall be agreed before fulfilment. The customer must provide accurate delivery and offloading details.",
+
       "5. QUANTITIES AND MEASUREMENTS: The customer is responsible for confirming measurements and quantities. Additional materials may attract extra charges.",
+
       "6. CHANGES AND CANCELLATIONS: Changes to confirmed orders may affect pricing, availability and delivery arrangements.",
+
       "7. BALANCE PAYMENT: Any outstanding balance must be settled as agreed before delivery completion or release of goods.",
+
       "8. PRODUCT INSPECTION: Inspect materials upon delivery and report shortages or discrepancies promptly."
     ];
 
     terms.forEach(term => {
-      const lines = pdf.splitTextToSize(term, pageWidth - margin * 2);
+      const lines = pdf.splitTextToSize(
+        term,
+        pageWidth - margin * 2
+      );
 
       if (y + lines.length * 4 > 280) {
         pdf.addPage();
@@ -859,6 +1066,7 @@
       }
 
       pdf.text(lines, margin, y);
+
       y += lines.length * 4 + 2;
     });
 
@@ -866,22 +1074,33 @@
 
     pdf.setFont("helvetica", "bold");
     pdf.setFontSize(9);
-    pdf.text("Thank you for choosing Mabati Rolling Mills.", margin, y);
+
+    if (y > 285) {
+      pdf.addPage();
+      y = 20;
+    }
+
+    pdf.text(
+      "Thank you for choosing Mabati Rolling Mills.",
+      margin,
+      y
+    );
 
     return pdf;
   }
 
   /* =======================================================
-     12. CONVERT PDF TO BASE64
+     14. PDF TO BASE64
      ======================================================= */
 
   function pdfToBase64(pdf) {
     const dataUri = pdf.output("datauristring");
+
     return dataUri.split(",")[1];
   }
 
   /* =======================================================
-     13. SUBMIT AND GENERATE INVOICE
+     15. SUBMIT AND FINALISE INVOICE
      ======================================================= */
 
   async function submitInvoice(event) {
@@ -896,117 +1115,216 @@
       ?.dataset.token;
 
     if (!token) {
-      showMessage("Please complete the security verification before continuing.", "error");
+      showMessage(
+        "Please complete the security verification before continuing.",
+        "error"
+      );
+
       return;
     }
 
     const items = getSelectedItems();
 
     if (!items.length) {
-      showMessage("Please select at least one valid roofing product.", "error");
+      showMessage(
+        "Please select at least one valid roofing product and specification.",
+        "error"
+      );
+
       return;
     }
 
-    const customer = {
-      name: document.getElementById("mrmCustomerName").value.trim(),
-      phone: document.getElementById("mrmCustomerPhone").value.trim(),
-      location: document.getElementById("mrmCustomerLocation").value.trim()
-    };
+    const customerName = document
+      .getElementById("mrmCustomerName")
+      .value.trim();
 
-    if (!customer.name || !customer.phone || !customer.location) {
-      showMessage("Complete all customer details before continuing.", "error");
+    const customerPhone = document
+      .getElementById("mrmCustomerPhone")
+      .value.trim();
+
+    const customerLocation = document
+      .getElementById("mrmCustomerLocation")
+      .value.trim();
+
+    if (
+      !customerName ||
+      customerName.length > 120 ||
+      !customerPhone ||
+      customerPhone.length > 30 ||
+      !customerLocation ||
+      customerLocation.length > 200
+    ) {
+      showMessage(
+        "Please check all customer details and try again.",
+        "error"
+      );
+
       return;
     }
 
     setLoading(true);
 
     const results = document.getElementById("mrmInvoiceResults");
+
     results.style.display = "none";
     results.innerHTML = "";
 
+    let pdf = null;
+    let downloadUrl = null;
+
     try {
-      showMessage("Step 1 of 3: Verifying your details and product prices...", "info");
+      /* FIRST STAGE: SERVER VALIDATION */
 
-      const prepared = await apiRequest("/api/invoices/prepare", {
-        method: "POST",
-        body: JSON.stringify({
-          customer,
-          items,
-          turnstileToken: token
-        })
-      });
+      showMessage(
+        "Step 1 of 3: Verifying customer details and product prices...",
+        "info"
+      );
 
-      const invoice = prepared.invoice || prepared;
+      const prepared = await apiRequest(
+        "/api/invoices/prepare",
+        {
+          method: "POST",
 
-      if (!invoice.invoiceNumber && !invoice.invoice_number) {
-        throw new Error("The server did not return an invoice number.");
+          body: JSON.stringify({
+            customerName,
+            customerPhone,
+            customerLocation,
+            items,
+            turnstileToken: token
+          })
+        }
+      );
+
+      const invoiceNumber = prepared.invoiceNumber;
+
+      const publicToken = prepared.token;
+
+      if (!invoiceNumber || !publicToken) {
+        throw new Error(
+          "The server did not return a valid invoice reference."
+        );
       }
 
-      showMessage("Step 2 of 3: Generating your pro-forma invoice PDF...", "info");
+      if (!Array.isArray(prepared.items) || !prepared.items.length) {
+        throw new Error(
+          "The server did not return the verified invoice items."
+        );
+      }
 
-      const pdf = createInvoicePDF(invoice);
+      /* SECOND STAGE: PDF GENERATION */
+
+      showMessage(
+        "Step 2 of 3: Generating your pro-forma invoice PDF...",
+        "info"
+      );
+
+      pdf = createInvoicePDF(prepared);
+
       const base64PDF = pdfToBase64(pdf);
 
-      showMessage("Step 3 of 3: Saving your invoice securely...", "info");
+      /* THIRD STAGE: SAVE PDF TO CLOUDFLARE */
 
-      const invoiceNumber = invoice.invoiceNumber || invoice.invoice_number;
+      showMessage(
+        "Step 3 of 3: Saving your invoice securely...",
+        "info"
+      );
 
-      const finalized = await apiRequest("/api/invoices/finalize", {
-        method: "POST",
-        body: JSON.stringify({
-          invoiceNumber,
-          publicToken: invoice.publicToken || invoice.public_token,
-          pdfBase64: base64PDF
-        })
-      });
+      const finalized = await apiRequest(
+        "/api/invoices/finalize",
+        {
+          method: "POST",
 
-      const publicUrl = finalized.publicUrl ||
-        finalized.public_url ||
-        invoice.publicUrl ||
-        invoice.public_url;
+          body: JSON.stringify({
+            token: publicToken,
+            pdfBase64: base64PDF
+          })
+        }
+      );
+
+      const publicUrl = finalized.invoiceUrl;
+
+      if (!publicUrl) {
+        throw new Error(
+          "The server saved the invoice but did not return its public link."
+        );
+      }
+
+      /* LOCAL PDF DOWNLOAD */
 
       const pdfBlob = pdf.output("blob");
-      const downloadUrl = URL.createObjectURL(pdfBlob);
+
+      downloadUrl = URL.createObjectURL(pdfBlob);
+
+      /* WHATSAPP MESSAGE */
 
       const whatsappMessage =
         `Hello MRM Team,\n\n` +
-        `I have generated a pro-forma invoice.\n` +
+        `I have generated a pro-forma invoice.\n\n` +
         `Invoice Number: ${invoiceNumber}\n` +
-        `Customer: ${customer.name}\n` +
-        `Location: ${customer.location}\n` +
-        `Total: ${money(invoice.total || invoice.subtotal)}\n\n` +
-        (publicUrl ? `Invoice link: ${publicUrl}` : "I will share the invoice PDF separately.") +
-        `\n\nKindly assist me with the next steps.`;
+        `Customer: ${customerName}\n` +
+        `Phone: ${customerPhone}\n` +
+        `Location: ${customerLocation}\n` +
+        `Total: ${money(prepared.total)}\n\n` +
+        `Invoice link: ${publicUrl}\n\n` +
+        `Kindly assist me with the next steps.`;
+
+      /* DISPLAY SUCCESS */
 
       results.innerHTML = `
         <h3>Invoice Created Successfully</h3>
 
-        <p><strong>Invoice Number:</strong> ${escapeHTML(invoiceNumber)}</p>
+        <p>
+          <strong>Invoice Number:</strong>
+          ${escapeHTML(invoiceNumber)}
+        </p>
 
-        <p><strong>Status:</strong> PENDING</p>
+        <p>
+          <strong>Customer:</strong>
+          ${escapeHTML(customerName)}
+        </p>
 
-        <p>Your pro-forma invoice has been generated and saved.</p>
+        <p>
+          <strong>Total:</strong>
+          ${money(prepared.total)}
+        </p>
 
-        <a href="${downloadUrl}" download="${escapeHTML(invoiceNumber)}.pdf">
+        <p>
+          <strong>Status:</strong>
+          PENDING
+        </p>
+
+        <p>
+          Your pro-forma invoice has been generated and saved securely.
+        </p>
+
+        <a
+          href="${downloadUrl}"
+          download="${escapeHTML(invoiceNumber)}.pdf">
           DOWNLOAD PDF
         </a>
 
-        ${publicUrl ? `
-          <a href="${escapeHTML(publicUrl)}" target="_blank" rel="noopener">
-            VIEW ONLINE INVOICE
-          </a>
-        ` : ""}
+        <a
+          href="${escapeHTML(publicUrl)}"
+          target="_blank"
+          rel="noopener">
+          VIEW ONLINE INVOICE
+        </a>
 
-        <a class="mrm-whatsapp"
+        <a
+          class="mrm-whatsapp"
           href="${createWhatsAppLink(whatsappMessage)}"
-          target="_blank" rel="noopener">
+          target="_blank"
+          rel="noopener">
           SHARE VIA WHATSAPP
         </a>
       `;
 
       results.style.display = "block";
 
-      showMessage("Your pro-forma invoice has been created successfully.", "success");
+      showMessage(
+        "Your pro-forma invoice has been created successfully.",
+        "success"
+      );
 
       resetTurnstile();
 
@@ -1019,7 +1337,8 @@
       console.error("MRM invoice error:", error);
 
       showMessage(
-        error.message || "Invoice creation failed. Please try again.",
+        error.message ||
+        "Invoice creation failed. Please try again.",
         "error"
       );
 
@@ -1031,30 +1350,53 @@
   }
 
   /* =======================================================
-     14. INITIALISE
+     16. INITIALISE INVOICE SYSTEM
      ======================================================= */
 
   async function initialiseInvoiceSystem() {
     addStyles();
+
     createInvoiceSection();
+
     addNavigationLink();
 
-    const addButton = document.getElementById("mrmAddInvoiceItem");
-    const form = document.getElementById("mrmInvoiceForm");
+    const addButton = document.getElementById(
+      "mrmAddInvoiceItem"
+    );
 
-    if (!addButton || !form) return;
+    const form = document.getElementById(
+      "mrmInvoiceForm"
+    );
 
-    addButton.addEventListener("click", addInvoiceItem);
-    form.addEventListener("submit", submitInvoice);
+    if (!addButton || !form) {
+      console.error("MRM invoice form could not be initialised.");
+      return;
+    }
+
+    addButton.addEventListener(
+      "click",
+      addInvoiceItem
+    );
+
+    form.addEventListener(
+      "submit",
+      submitInvoice
+    );
 
     renderTurnstile();
 
     try {
-      showMessage("Loading roofing product catalogue...", "info");
+      showMessage(
+        "Loading roofing product catalogue...",
+        "info"
+      );
 
       await loadCatalogue();
 
-      showMessage("Product catalogue loaded. You can now create an invoice.", "success");
+      showMessage(
+        "Product catalogue loaded. You can now create an invoice.",
+        "success"
+      );
 
     } catch (error) {
       console.error("MRM catalogue error:", error);
@@ -1068,8 +1410,15 @@
     renderTurnstile();
   }
 
+  /* =======================================================
+     17. START SYSTEM
+     ======================================================= */
+
   if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", initialiseInvoiceSystem);
+    document.addEventListener(
+      "DOMContentLoaded",
+      initialiseInvoiceSystem
+    );
   } else {
     initialiseInvoiceSystem();
   }
