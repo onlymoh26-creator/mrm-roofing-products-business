@@ -6,11 +6,11 @@
    Backend: Cloudflare Worker + D1 + R2
 
    FEATURES:
-   - Replaces the old WhatsApp quotation form
    - Generates pro-forma quotation PDFs
    - Includes official company logo
    - Verifies prices through the server
    - Saves PDFs securely to Cloudflare R2
+   - Uses customer name in the PDF filename
    - Provides download and online viewing
    - Shares only the public quotation link via WhatsApp
    - Automatic PDF download enabled
@@ -26,7 +26,6 @@
     "https://mrm-invoice-api.onlymoh26.workers.dev";
 
   const LOGO_PATH = "images/mrm-logo.png";
-
   const WHATSAPP_NUMBER = "254733608974";
   const CURRENCY = "KES";
 
@@ -54,6 +53,22 @@
 
   function createWhatsAppLink(message) {
     return `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(message)}`;
+  }
+
+  /*
+   * Creates a clean filename from the customer's name.
+   * Example:
+   * Samuel Mwangi - MRM Proforma Invoice.pdf
+   */
+  function createCustomerFilename(customerName) {
+    const safeName = String(customerName || "")
+      .normalize("NFKC")
+      .replace(/[^\p{L}\p{N} ._-]+/gu, "")
+      .replace(/\s+/g, " ")
+      .trim()
+      .replace(/^[.\s_-]+|[.\s_-]+$/g, "");
+
+    return `${safeName || "Customer"} - MRM Proforma Invoice.pdf`;
   }
 
   async function apiRequest(endpoint, options = {}) {
@@ -372,8 +387,7 @@
     document.head.appendChild(style);
   }
 
-  /* 5. CREATE QUOTATION SECTION
-     REPLACES THE OLD WHATSAPP QUOTATION FORM */
+  /* 5. CREATE QUOTATION SECTION */
 
   function createInvoiceSection() {
     const existingSection = document.getElementById(
@@ -504,8 +518,6 @@
       </div>
     `;
 
-    /* REMOVE OLD QUOTATION FORM AND REPLACE IT */
-
     if (quoteForm) {
       if (quoteSection && quoteSection.parentNode) {
         quoteSection.replaceWith(section);
@@ -515,8 +527,6 @@
       quoteForm.replaceWith(section);
       return;
     }
-
-    /* FALLBACK IF THE OLD FORM DOES NOT EXIST */
 
     const footer = document.querySelector("footer");
 
@@ -783,8 +793,6 @@
 
     let y = 48;
 
-    /* COMPANY HEADER WITH OFFICIAL LOGO */
-
     if (companyLogo) {
       const maxLogoWidth = 30;
       const maxLogoHeight = 30;
@@ -849,8 +857,6 @@
       43
     );
 
-    /* DOCUMENT TITLE */
-
     pdf.setFont("helvetica", "bold");
     pdf.setFontSize(17);
     pdf.setTextColor(18, 54, 90);
@@ -872,8 +878,6 @@
     );
 
     y += 12;
-
-    /* CUSTOMER DETAILS */
 
     pdf.setFont("helvetica", "bold");
     pdf.text("BILL TO:", margin, y);
@@ -905,8 +909,6 @@
     );
 
     y += 12;
-
-    /* PRODUCT TABLE */
 
     const tableRows = items.map((item, index) => [
       String(index + 1),
@@ -948,8 +950,6 @@
 
     y = pdf.lastAutoTable.finalY + 12;
 
-    /* TOTAL */
-
     if (y > 245) {
       pdf.addPage();
       y = 20;
@@ -968,8 +968,6 @@
 
     y += 12;
 
-    /* PENDING STAMP */
-
     pdf.setDrawColor(190, 35, 35);
     pdf.setTextColor(190, 35, 35);
     pdf.setLineWidth(1.1);
@@ -987,8 +985,6 @@
     );
 
     y += 23;
-
-    /* TERMS AND CONDITIONS */
 
     if (y > 225) {
       pdf.addPage();
@@ -1111,16 +1107,12 @@
     results.innerHTML = "";
 
     try {
-      /* LOAD LOGO BEFORE GENERATING PDF */
-
       showMessage(
         "Loading MRM company logo...",
         "info"
       );
 
       await loadCompanyLogo();
-
-      /* FIRST STAGE: SERVER VALIDATION */
 
       showMessage(
         "Step 1 of 3: Verifying customer details and product prices...",
@@ -1155,8 +1147,6 @@
         );
       }
 
-      /* SECOND STAGE: PDF GENERATION */
-
       showMessage(
         "Step 2 of 3: Generating your roofing quotation PDF...",
         "info"
@@ -1164,8 +1154,6 @@
 
       const pdf = createInvoicePDF(prepared);
       const base64PDF = pdfToBase64(pdf);
-
-      /* THIRD STAGE: SAVE PDF TO CLOUDFLARE */
 
       showMessage(
         "Step 3 of 3: Saving your quotation securely...",
@@ -1191,13 +1179,15 @@
         );
       }
 
-      /* CREATE LOCAL PDF DOWNLOAD */
+      /*
+       * CUSTOMER-NAME PDF FILENAME
+       * Example:
+       * Samuel Mwangi - MRM Proforma Invoice.pdf
+       */
+      const customerFilename = createCustomerFilename(customerName);
 
       const pdfBlob = pdf.output("blob");
       const downloadUrl = URL.createObjectURL(pdfBlob);
-
-      /* WHATSAPP MESSAGE
-         NO CUSTOMER PERSONAL DETAILS ARE INCLUDED */
 
       const whatsappMessage =
         `Hello MRM Team,\n\n` +
@@ -1206,8 +1196,6 @@
         `${publicUrl}\n\n` +
         `Kindly assist me with the next steps.\n\n` +
         `Thank you.`;
-
-      /* DISPLAY SUCCESS AND QUOTATION LINKS */
 
       results.innerHTML = `
         <h3>ROOFING QUOTATION GENERATED SUCCESSFULLY</h3>
@@ -1220,6 +1208,11 @@
         <p>
           <strong>Customer:</strong>
           ${escapeHTML(customerName)}
+        </p>
+
+        <p>
+          <strong>PDF Filename:</strong>
+          ${escapeHTML(customerFilename)}
         </p>
 
         <p>
@@ -1241,7 +1234,7 @@
         <a
           id="mrmDownloadInvoiceLink"
           href="${downloadUrl}"
-          download="${escapeHTML(invoiceNumber)}.pdf">
+          download="${escapeHTML(customerFilename)}">
           DOWNLOAD QUOTATION
         </a>
 
@@ -1263,8 +1256,6 @@
 
       results.style.display = "block";
 
-      /* AUTOMATIC BROWSER DOWNLOAD */
-
       const downloadLink = document.getElementById(
         "mrmDownloadInvoiceLink"
       );
@@ -1274,7 +1265,7 @@
       }
 
       showMessage(
-        "Your roofing quotation has been generated. Your PDF download is starting.",
+        "Your roofing quotation has been generated. Your customer-named PDF download is starting.",
         "success"
       );
 
@@ -1302,10 +1293,7 @@
   async function initialiseInvoiceSystem() {
     addStyles();
 
-    /* REPLACE OLD QUOTATION FORM */
-
     createInvoiceSection();
-
     addNavigationLink();
 
     const addButton = document.getElementById(
