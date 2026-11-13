@@ -1,12 +1,20 @@
 
 /* =========================================================
    MABATI ROLLING MILLS
-   COMPLETE PRO-FORMA INVOICE SYSTEM
+   ROOFING QUOTATION SYSTEM
    File: invoice.js
    Backend: Cloudflare Worker + D1 + R2
-   OFFICIAL WEBSITE LOGO INCLUDED IN PDF
-   TURNSTILE REMOVED
-   AUTOMATIC PDF DOWNLOAD ENABLED
+
+   FEATURES:
+   - Replaces the old WhatsApp quotation form
+   - Generates pro-forma quotation PDFs
+   - Includes official company logo
+   - Verifies prices through the server
+   - Saves PDFs securely to Cloudflare R2
+   - Provides download and online viewing
+   - Shares only the public quotation link via WhatsApp
+   - Automatic PDF download enabled
+   - TURNSTILE REMOVED
    ========================================================= */
 
 (() => {
@@ -69,7 +77,7 @@
       throw new Error(
         data.message ||
         data.error ||
-        "The invoice server could not complete your request."
+        "The quotation server could not complete your request."
       );
     }
 
@@ -97,8 +105,8 @@
     button.disabled = loading;
 
     button.textContent = loading
-      ? "PROCESSING INVOICE..."
-      : "CREATE PRO-FORMA INVOICE";
+      ? "GENERATING YOUR QUOTATION..."
+      : "GET ROOFING QUOTATION";
   }
 
   /* 3. LOAD OFFICIAL COMPANY LOGO */
@@ -161,7 +169,7 @@
     return companyLogo;
   }
 
-  /* 4. INVOICE STYLES */
+  /* 4. QUOTATION STYLES */
 
   function addStyles() {
     if (document.getElementById("mrmInvoiceStyles")) return;
@@ -364,10 +372,33 @@
     document.head.appendChild(style);
   }
 
-  /* 5. CREATE INVOICE SECTION */
+  /* 5. CREATE QUOTATION SECTION
+     REPLACES THE OLD WHATSAPP QUOTATION FORM */
 
   function createInvoiceSection() {
-    if (document.getElementById("mrmInvoiceSection")) return;
+    const existingSection = document.getElementById(
+      "mrmInvoiceSection"
+    );
+
+    const quoteForm = document.getElementById("quotationForm");
+
+    const quoteSection = quoteForm
+      ? (
+          quoteForm.closest(".quotation-section") ||
+          quoteForm.closest("section")
+        )
+      : null;
+
+    if (existingSection) {
+      if (
+        quoteSection &&
+        quoteSection !== existingSection
+      ) {
+        quoteSection.remove();
+      }
+
+      return;
+    }
 
     const section = document.createElement("section");
     section.id = "mrmInvoiceSection";
@@ -375,11 +406,12 @@
     section.innerHTML = `
       <div class="mrm-invoice-container">
 
-        <h2>CREATE A PRO-FORMA INVOICE</h2>
+        <h2>GET A ROOFING QUOTATION</h2>
 
         <p class="mrm-invoice-intro">
-          Generate an official MRM roofing materials pro-forma invoice.
-          Select your products, enter your details and create your invoice.
+          Generate your roofing materials quotation instantly.
+          Select your products, enter your details and receive
+          your downloadable pro-forma quotation.
         </p>
 
         <form id="mrmInvoiceForm">
@@ -428,12 +460,15 @@
           </div>
 
           <div class="mrm-invoice-items">
+
             <h3>PRODUCT DETAILS</h3>
+
             <div id="mrmInvoiceItems"></div>
 
             <button type="button" id="mrmAddInvoiceItem">
               + ADD ANOTHER PRODUCT
             </button>
+
           </div>
 
           <div class="mrm-invoice-total">
@@ -443,7 +478,8 @@
 
           <p class="mrm-small-note">
             The displayed total is indicative. Final prices and totals
-            are verified by the MRM invoice server before the invoice is issued.
+            are verified by the MRM quotation server before the
+            quotation is issued.
           </p>
 
           <div
@@ -452,7 +488,7 @@
           </div>
 
           <button type="submit" id="mrmCreateInvoiceBtn">
-            CREATE PRO-FORMA INVOICE
+            GET ROOFING QUOTATION
           </button>
 
         </form>
@@ -460,27 +496,27 @@
         <div id="mrmInvoiceResults" class="mrm-invoice-results"></div>
 
         <p class="mrm-small-note">
-          A pro-forma invoice is not proof of payment.
-          Payments must be made through authorised official payment channels.
-          No cash payments are accepted.
+          A pro-forma quotation is not proof of payment.
+          Payments must be made through authorised official payment
+          channels. No cash payments are accepted.
         </p>
 
       </div>
     `;
 
-    const quoteForm = document.getElementById("quotationForm");
+    /* REMOVE OLD QUOTATION FORM AND REPLACE IT */
 
     if (quoteForm) {
-      const quoteSection = quoteForm.closest("section");
-
       if (quoteSection && quoteSection.parentNode) {
-        quoteSection.parentNode.insertBefore(
-          section,
-          quoteSection.nextSibling
-        );
+        quoteSection.replaceWith(section);
         return;
       }
+
+      quoteForm.replaceWith(section);
+      return;
     }
+
+    /* FALLBACK IF THE OLD FORM DOES NOT EXIST */
 
     const footer = document.querySelector("footer");
 
@@ -505,7 +541,7 @@
       const link = document.createElement("a");
 
       link.href = "#mrmInvoiceSection";
-      link.textContent = "Create an Invoice";
+      link.textContent = "Get a Roofing Quotation";
 
       item.appendChild(link);
       list.appendChild(item);
@@ -725,7 +761,7 @@
     }
   }
 
-  /* 13. GENERATE PRO-FORMA PDF */
+  /* 13. GENERATE PRO-FORMA QUOTATION PDF */
 
   function createInvoicePDF(invoice) {
     if (!window.jspdf || !window.jspdf.jsPDF) {
@@ -813,7 +849,7 @@
       43
     );
 
-    /* INVOICE TITLE */
+    /* DOCUMENT TITLE */
 
     pdf.setFont("helvetica", "bold");
     pdf.setFontSize(17);
@@ -1021,7 +1057,7 @@
     return dataUri.split(",")[1];
   }
 
-  /* 15. SUBMIT AND FINALISE INVOICE */
+  /* 15. SUBMIT AND FINALISE QUOTATION */
 
   async function submitInvoice(event) {
     event.preventDefault();
@@ -1109,20 +1145,20 @@
 
       if (!invoiceNumber || !publicToken) {
         throw new Error(
-          "The server did not return a valid invoice reference."
+          "The server did not return a valid quotation reference."
         );
       }
 
       if (!Array.isArray(prepared.items) || !prepared.items.length) {
         throw new Error(
-          "The server did not return the verified invoice items."
+          "The server did not return the verified quotation items."
         );
       }
 
       /* SECOND STAGE: PDF GENERATION */
 
       showMessage(
-        "Step 2 of 3: Generating your pro-forma invoice PDF...",
+        "Step 2 of 3: Generating your roofing quotation PDF...",
         "info"
       );
 
@@ -1132,7 +1168,7 @@
       /* THIRD STAGE: SAVE PDF TO CLOUDFLARE */
 
       showMessage(
-        "Step 3 of 3: Saving your invoice securely...",
+        "Step 3 of 3: Saving your quotation securely...",
         "info"
       );
 
@@ -1151,7 +1187,7 @@
 
       if (!publicUrl) {
         throw new Error(
-          "The server saved the invoice but did not return its public link."
+          "The server saved the quotation but did not return its public link."
         );
       }
 
@@ -1160,26 +1196,24 @@
       const pdfBlob = pdf.output("blob");
       const downloadUrl = URL.createObjectURL(pdfBlob);
 
-      /* WHATSAPP MESSAGE */
+      /* WHATSAPP MESSAGE
+         NO CUSTOMER PERSONAL DETAILS ARE INCLUDED */
 
       const whatsappMessage =
         `Hello MRM Team,\n\n` +
-        `I have generated a pro-forma invoice.\n\n` +
-        `Invoice Number: ${invoiceNumber}\n` +
-        `Customer: ${customerName}\n` +
-        `Phone: ${customerPhone}\n` +
-        `Location: ${customerLocation}\n` +
-        `Total: ${money(prepared.total)}\n\n` +
-        `Invoice link: ${publicUrl}\n\n` +
-        `Kindly assist me with the next steps.`;
+        `I have successfully generated a roofing quotation.\n\n` +
+        `Please find my quotation using the link below:\n\n` +
+        `${publicUrl}\n\n` +
+        `Kindly assist me with the next steps.\n\n` +
+        `Thank you.`;
 
-      /* DISPLAY SUCCESS AND DOWNLOAD LINK */
+      /* DISPLAY SUCCESS AND QUOTATION LINKS */
 
       results.innerHTML = `
-        <h3>Invoice Created Successfully</h3>
+        <h3>ROOFING QUOTATION GENERATED SUCCESSFULLY</h3>
 
         <p>
-          <strong>Invoice Number:</strong>
+          <strong>Quotation Number:</strong>
           ${escapeHTML(invoiceNumber)}
         </p>
 
@@ -1199,22 +1233,23 @@
         </p>
 
         <p>
-          Your pro-forma invoice has been generated and saved securely.
-          The PDF download should begin automatically.
+          Your roofing quotation has been generated and saved securely.
+          You can download the PDF, view it online or share its link
+          with the MRM team through WhatsApp.
         </p>
 
         <a
           id="mrmDownloadInvoiceLink"
           href="${downloadUrl}"
           download="${escapeHTML(invoiceNumber)}.pdf">
-          DOWNLOAD PDF
+          DOWNLOAD QUOTATION
         </a>
 
         <a
           href="${escapeHTML(publicUrl)}"
           target="_blank"
           rel="noopener">
-          VIEW ONLINE INVOICE
+          VIEW QUOTATION ONLINE
         </a>
 
         <a
@@ -1222,7 +1257,7 @@
           href="${createWhatsAppLink(whatsappMessage)}"
           target="_blank"
           rel="noopener">
-          SHARE VIA WHATSAPP
+          SHARE QUOTATION VIA WHATSAPP
         </a>
       `;
 
@@ -1239,7 +1274,7 @@
       }
 
       showMessage(
-        "Your pro-forma invoice has been created. Your PDF download is starting.",
+        "Your roofing quotation has been generated. Your PDF download is starting.",
         "success"
       );
 
@@ -1249,11 +1284,11 @@
       });
 
     } catch (error) {
-      console.error("MRM invoice error:", error);
+      console.error("MRM quotation error:", error);
 
       showMessage(
         error.message ||
-        "Invoice creation failed. Please try again.",
+        "Quotation generation failed. Please try again.",
         "error"
       );
 
@@ -1262,11 +1297,15 @@
     }
   }
 
-  /* 16. INITIALISE INVOICE SYSTEM */
+  /* 16. INITIALISE QUOTATION SYSTEM */
 
   async function initialiseInvoiceSystem() {
     addStyles();
+
+    /* REPLACE OLD QUOTATION FORM */
+
     createInvoiceSection();
+
     addNavigationLink();
 
     const addButton = document.getElementById(
@@ -1278,7 +1317,7 @@
     );
 
     if (!addButton || !form) {
-      console.error("MRM invoice form could not be initialised.");
+      console.error("MRM quotation form could not be initialised.");
       return;
     }
 
@@ -1294,7 +1333,7 @@
       await loadCatalogue();
 
       showMessage(
-        "Product catalogue loaded. You can now create an invoice.",
+        "Product catalogue loaded. You can now get your roofing quotation.",
         "success"
       );
 
