@@ -58,8 +58,18 @@ if (menuToggle && mainNav) {
     }
   });
 
-  mainNav.querySelectorAll("a").forEach(function (link) {
-    link.addEventListener("click", closeMenu);
+  /*
+    EVENT DELEGATION:
+    This also detects navigation links added later
+    by invoice.js.
+  */
+
+  mainNav.addEventListener("click", function (event) {
+    const link = event.target.closest("a");
+
+    if (link) {
+      closeMenu();
+    }
   });
 
   document.addEventListener("click", function (event) {
@@ -456,8 +466,15 @@ document.querySelectorAll(".product-card").forEach(function (card) {
 
 
 /* =========================================
-   8. QUOTATION FORM PRODUCT OPTIONS
+   8. LEGACY QUOTATION FORM PRODUCT OPTIONS
 ========================================= */
+
+/*
+   Retained only for compatibility with the existing
+   HTML if the old form is still present.
+
+   The new pro-forma invoice system is handled by invoice.js.
+*/
 
 const quoteProduct = document.getElementById("quoteProduct");
 
@@ -479,8 +496,15 @@ if (quoteProduct) {
 
 
 /* =========================================
-   9. WHATSAPP QUOTATION FORM
+   9. LEGACY WHATSAPP QUOTATION FORM
 ========================================= */
+
+/*
+   This listener only applies if the old quotation
+   form still exists when app.js loads.
+
+   The new invoice workflow is managed by invoice.js.
+*/
 
 const quotationForm = document.getElementById("quotationForm");
 
@@ -560,29 +584,50 @@ if (currentYear) {
 
 
 /* =========================================
-   12. SMOOTH SECTION NAVIGATION
+   12. DYNAMIC SMOOTH SECTION NAVIGATION
 ========================================= */
 
-document.querySelectorAll('a[href^="#"]').forEach(function (link) {
-  link.addEventListener("click", function (event) {
-    const targetId = link.getAttribute("href");
+/*
+   IMPORTANT:
+   This uses event delegation on the document.
 
-    if (!targetId || targetId === "#") return;
+   It works with:
+   - Existing navigation links.
+   - Mobile hamburger menu links.
+   - Links dynamically added by invoice.js.
+   - The GET A ROOFING QUOTATION link.
+*/
 
-    const target = document.querySelector(targetId);
+document.addEventListener("click", function (event) {
+  const link = event.target.closest('a[href^="#"]');
 
-    if (target) {
-      event.preventDefault();
+  if (!link) return;
 
-      target.scrollIntoView({
-        behavior: "smooth",
-        block: "start"
-      });
+  const targetId = link.getAttribute("href");
 
-      if (mainNav && mainNav.contains(link)) {
-        closeMenu();
-      }
-    }
+  if (!targetId || targetId === "#") return;
+
+  const target = document.getElementById(targetId.substring(1));
+
+  if (!target) return;
+
+  event.preventDefault();
+
+  /*
+     Close the mobile navigation before scrolling.
+  */
+
+  if (mainNav && mainNav.contains(link)) {
+    closeMenu();
+  }
+
+  /*
+     Smoothly navigate to the requested section.
+  */
+
+  target.scrollIntoView({
+    behavior: "smooth",
+    block: "start"
   });
 });
 
