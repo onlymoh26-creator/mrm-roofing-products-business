@@ -4,6 +4,7 @@
    COMPLETE PRO-FORMA INVOICE SYSTEM
    File: invoice.js
    Backend: Cloudflare Worker + D1 + R2
+   OFFICIAL WEBSITE LOGO INCLUDED IN PDF
    TURNSTILE REMOVED
    AUTOMATIC PDF DOWNLOAD ENABLED
    ========================================================= */
@@ -16,10 +17,13 @@
   const API_BASE =
     "https://mrm-invoice-api.onlymoh26.workers.dev";
 
+  const LOGO_PATH = "images/mrm-logo.png";
+
   const WHATSAPP_NUMBER = "254733608974";
   const CURRENCY = "KES";
 
   let catalogue = [];
+  let companyLogo = null;
 
   /* 2. GENERAL HELPERS */
 
@@ -97,7 +101,67 @@
       : "CREATE PRO-FORMA INVOICE";
   }
 
-  /* 3. INVOICE STYLES */
+  /* 3. LOAD OFFICIAL COMPANY LOGO */
+
+  async function loadCompanyLogo() {
+    if (companyLogo) return companyLogo;
+
+    const logoURL = new URL(LOGO_PATH, document.baseURI);
+
+    const response = await fetch(logoURL.href, {
+      cache: "force-cache"
+    });
+
+    if (!response.ok) {
+      throw new Error(
+        `Company logo could not be loaded: ${response.status}`
+      );
+    }
+
+    const blob = await response.blob();
+
+    if (!blob.type.startsWith("image/")) {
+      throw new Error("The company logo file is not a valid image.");
+    }
+
+    const dataURL = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => reject(
+        new Error("Could not read the company logo.")
+      );
+
+      reader.readAsDataURL(blob);
+    });
+
+    const dimensions = await new Promise((resolve, reject) => {
+      const image = new Image();
+
+      image.onload = () => {
+        resolve({
+          width: image.naturalWidth,
+          height: image.naturalHeight
+        });
+      };
+
+      image.onerror = () => reject(
+        new Error("The company logo image could not be decoded.")
+      );
+
+      image.src = dataURL;
+    });
+
+    companyLogo = {
+      data: dataURL,
+      width: dimensions.width,
+      height: dimensions.height
+    };
+
+    return companyLogo;
+  }
+
+  /* 4. INVOICE STYLES */
 
   function addStyles() {
     if (document.getElementById("mrmInvoiceStyles")) return;
@@ -300,7 +364,7 @@
     document.head.appendChild(style);
   }
 
-  /* 4. CREATE INVOICE SECTION */
+  /* 5. CREATE INVOICE SECTION */
 
   function createInvoiceSection() {
     if (document.getElementById("mrmInvoiceSection")) return;
@@ -427,7 +491,7 @@
     }
   }
 
-  /* 5. NAVIGATION LINK */
+  /* 6. NAVIGATION LINK */
 
   function addNavigationLink() {
     const navLists = document.querySelectorAll(
@@ -448,7 +512,7 @@
     });
   }
 
-  /* 6. LOAD SERVER CATALOGUE */
+  /* 7. LOAD SERVER CATALOGUE */
 
   async function loadCatalogue() {
     const response = await apiRequest("/api/catalogue");
@@ -464,7 +528,7 @@
     addInvoiceItem();
   }
 
-  /* 7. PRODUCT OPTIONS */
+  /* 8. PRODUCT OPTIONS */
 
   function productOptions() {
     return `
@@ -477,7 +541,7 @@
     `;
   }
 
-  /* 8. ADD PRODUCT ROW */
+  /* 9. ADD PRODUCT ROW */
 
   function addInvoiceItem() {
     const container = document.getElementById("mrmInvoiceItems");
@@ -545,7 +609,7 @@
     updateTotal();
   }
 
-  /* 9. GAUGE OPTIONS */
+  /* 10. GAUGE OPTIONS */
 
   function updateGaugeOptions(row) {
     const productIndex = row.querySelector(".mrm-product").value;
@@ -581,7 +645,7 @@
     updateTotal();
   }
 
-  /* 10. COLLECT PRODUCT INPUT */
+  /* 11. COLLECT PRODUCT INPUT */
 
   function getSelectedItems() {
     const rows = document.querySelectorAll(".mrm-invoice-item");
@@ -620,7 +684,7 @@
     }).filter(Boolean);
   }
 
-  /* 11. INDICATIVE TOTAL */
+  /* 12. INDICATIVE TOTAL */
 
   function updateTotal() {
     const rows = document.querySelectorAll(".mrm-invoice-item");
@@ -661,7 +725,7 @@
     }
   }
 
-  /* 12. GENERATE PRO-FORMA PDF */
+  /* 13. GENERATE PRO-FORMA PDF */
 
   function createInvoicePDF(invoice) {
     if (!window.jspdf || !window.jspdf.jsPDF) {
@@ -681,21 +745,56 @@
     const total = Number(invoice.total || 0);
     const invoiceDate = new Date().toLocaleDateString("en-KE");
 
-    let y = 20;
+    let y = 48;
 
-    /* COMPANY HEADER */
+    /* COMPANY HEADER WITH OFFICIAL LOGO */
+
+    if (companyLogo) {
+      const maxLogoWidth = 30;
+      const maxLogoHeight = 30;
+
+      const ratio = Math.min(
+        maxLogoWidth / companyLogo.width,
+        maxLogoHeight / companyLogo.height
+      );
+
+      const logoWidth = companyLogo.width * ratio;
+      const logoHeight = companyLogo.height * ratio;
+
+      const logoX = margin;
+      const logoY = 9 + (maxLogoHeight - logoHeight) / 2;
+
+      pdf.addImage(
+        companyLogo.data,
+        "PNG",
+        logoX,
+        logoY,
+        logoWidth,
+        logoHeight
+      );
+    }
+
+    const companyTextX = companyLogo ? 52 : margin;
 
     pdf.setFont("helvetica", "bold");
-    pdf.setFontSize(19);
+    pdf.setFontSize(17);
     pdf.setTextColor(18, 54, 90);
-    pdf.text("MABATI ROLLING MILLS", margin, y);
 
-    y += 8;
+    pdf.text(
+      "MABATI ROLLING MILLS",
+      companyTextX,
+      20
+    );
 
     pdf.setFont("helvetica", "normal");
     pdf.setFontSize(9);
     pdf.setTextColor(80, 80, 80);
-    pdf.text("ROOFING PRODUCTS & SOLUTIONS", margin, y);
+
+    pdf.text(
+      "ROOFING PRODUCTS & SOLUTIONS",
+      companyTextX,
+      28
+    );
 
     pdf.text(
       "Phone: 0733 608 974",
@@ -704,12 +803,15 @@
       { align: "right" }
     );
 
-    y += 13;
-
     pdf.setDrawColor(18, 54, 90);
-    pdf.line(margin, y, pageWidth - margin, y);
+    pdf.setLineWidth(0.6);
 
-    y += 12;
+    pdf.line(
+      margin,
+      43,
+      pageWidth - margin,
+      43
+    );
 
     /* INVOICE TITLE */
 
@@ -912,14 +1014,14 @@
     return pdf;
   }
 
-  /* 13. PDF TO BASE64 */
+  /* 14. PDF TO BASE64 */
 
   function pdfToBase64(pdf) {
     const dataUri = pdf.output("datauristring");
     return dataUri.split(",")[1];
   }
 
-  /* 14. SUBMIT AND FINALISE INVOICE */
+  /* 15. SUBMIT AND FINALISE INVOICE */
 
   async function submitInvoice(event) {
     event.preventDefault();
@@ -973,6 +1075,15 @@
     results.innerHTML = "";
 
     try {
+      /* LOAD LOGO BEFORE GENERATING PDF */
+
+      showMessage(
+        "Loading MRM company logo...",
+        "info"
+      );
+
+      await loadCompanyLogo();
+
       /* FIRST STAGE: SERVER VALIDATION */
 
       showMessage(
@@ -1151,7 +1262,7 @@
     }
   }
 
-  /* 15. INITIALISE INVOICE SYSTEM */
+  /* 16. INITIALISE INVOICE SYSTEM */
 
   async function initialiseInvoiceSystem() {
     addStyles();
@@ -1197,7 +1308,7 @@
     }
   }
 
-  /* 16. START SYSTEM */
+  /* 17. START SYSTEM */
 
   if (document.readyState === "loading") {
     document.addEventListener(
