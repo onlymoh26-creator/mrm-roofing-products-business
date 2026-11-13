@@ -9,7 +9,7 @@
    1. WHATSAPP CONTACT DETAILS
 ========================================= */
 
-const WHATSAPP_NUMBER = "254756393875";
+const WHATSAPP_NUMBER = "254733608974";
 
 const WHATSAPP_MESSAGE = `Hello MRM Team,
 
@@ -160,14 +160,6 @@ if (heroSlides.length > 0) {
    5. ROOFING PRICE DATA
 ========================================= */
 
-/*
-  General category rates.
-  These rates are in KSh per metre.
-
-  Product-specific rates override the general
-  category rate for the matching gauge.
-*/
-
 const categoryPrices = {
   "box-profile": {
     "26G": 710,
@@ -187,11 +179,6 @@ const categoryPrices = {
   }
 };
 
-
-/*
-  Product-specific rates.
-  These override the category rate where applicable.
-*/
 
 const productSpecificPrices = {
   "MaxCover": {
@@ -220,19 +207,6 @@ const productSpecificPrices = {
 };
 
 
-/*
-  Stone-coated products are calculated per piece.
-
-  Confirmed prices:
-  Lifestile Waves: KSh 680 per piece.
-  Three Stone Coated Roofing: KSh 720 per piece.
-  Underscore Stone Coated Roofing: KSh 760 per piece.
-  Lifestile Roman: KSh 779 per piece.
-
-  Lifestile Shingles: KSh 770 per piece.
-  Lifestile Classic: KSh 650 per piece.
-*/
-
 const stoneCoatedPrices = {
   "Lifestile Waves": 680,
   "Three Stone Coated Roofing": 720,
@@ -243,12 +217,6 @@ const stoneCoatedPrices = {
 };
 
 
-/*
-  Concealed-fix and specialised profiles.
-  These products have fixed prices per metre.
-  Their prices do not depend on gauge.
-*/
-
 const concealedFixPrices = {
   "Saflok": 1440,
   "Safdeck": 1280,
@@ -256,8 +224,6 @@ const concealedFixPrices = {
   "Tekdek": 1440
 };
 
-
-/* Gauge options for each roofing category. */
 
 const categoryGauges = {
   "box-profile": ["26G", "28G", "30G"],
@@ -279,15 +245,11 @@ function formatCurrency(amount) {
 
 function getProductRate(product, category, gauge, unit) {
 
-  /* Stone-coated products: fixed price per piece. */
-
   if (unit === "piece") {
     return Object.prototype.hasOwnProperty.call(stoneCoatedPrices, product)
       ? stoneCoatedPrices[product]
       : null;
   }
-
-  /* Concealed-fix products: fixed price per metre. */
 
   if (
     category === "concealed-fix" &&
@@ -295,8 +257,6 @@ function getProductRate(product, category, gauge, unit) {
   ) {
     return concealedFixPrices[product];
   }
-
-  /* Product-specific gauge prices. */
 
   if (
     productSpecificPrices[product] &&
@@ -307,8 +267,6 @@ function getProductRate(product, category, gauge, unit) {
   ) {
     return productSpecificPrices[product][gauge];
   }
-
-  /* General category gauge prices. */
 
   if (
     categoryPrices[category] &&
@@ -338,11 +296,6 @@ function createProductCalculator(card) {
   calculator.appendChild(heading);
 
   let gaugeSelect = null;
-
-  /*
-    Concealed-fix products have fixed metre rates.
-    They do not need a gauge selection in the calculator.
-  */
 
   if (unit !== "piece" && category !== "concealed-fix") {
     const gaugeLabel = document.createElement("label");
@@ -497,8 +450,6 @@ function createProductCalculator(card) {
 }
 
 
-/* Add an individual calculator to every product card. */
-
 document.querySelectorAll(".product-card").forEach(function (card) {
   createProductCalculator(card);
 });
@@ -550,7 +501,7 @@ if (quotationForm) {
       return;
     }
 
-    let message = `Hello MRM Team,
+    const message = `Hello MRM Team,
 
 I would like to request a roofing quotation.
 
@@ -581,8 +532,6 @@ Thank you.`;
 /* =========================================
    10. FAQ INTERACTION
 ========================================= */
-
-// Only one FAQ item stays open at a time.
 
 const faqItems = document.querySelectorAll(".faq-item");
 
@@ -662,8 +611,6 @@ const projectCategoryButtons = document.querySelectorAll("[data-gallery-open]");
 const projectBackButtons = document.querySelectorAll("[data-gallery-back]");
 
 
-/* Open the selected project gallery. */
-
 function openProjectGallery(category) {
   if (!projectCategories) return;
 
@@ -697,8 +644,6 @@ function openProjectGallery(category) {
 }
 
 
-/* Return to the three project categories. */
-
 function closeProjectGallery() {
   projectGalleryViews.forEach(function (gallery) {
     gallery.hidden = true;
@@ -715,8 +660,6 @@ function closeProjectGallery() {
 }
 
 
-/* Connect the category cards. */
-
 projectCategoryButtons.forEach(function (button) {
   button.addEventListener("click", function () {
     openProjectGallery(button.dataset.galleryOpen);
@@ -724,14 +667,10 @@ projectCategoryButtons.forEach(function (button) {
 });
 
 
-/* Connect the Back to Categories buttons. */
-
 projectBackButtons.forEach(function (button) {
   button.addEventListener("click", closeProjectGallery);
 });
 
-
-/* Update the active navigation dot. */
 
 function updateProjectGalleryDots(gallery) {
   const track = gallery.querySelector(".project-gallery-track");
@@ -752,8 +691,6 @@ function updateProjectGalleryDots(gallery) {
   });
 }
 
-
-/* Connect arrows, swipe scrolling and navigation dots. */
 
 projectGalleryViews.forEach(function (gallery) {
   const track = gallery.querySelector(".project-gallery-track");
