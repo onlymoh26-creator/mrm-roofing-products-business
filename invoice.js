@@ -11,8 +11,8 @@
 
   const API_BASE = "https://mrm-invoice-api.onlymoh26.workers.dev";
   const COMPANY_NAME = "MABATI ROLLING MILLS";
-  const COMPANY_PHONE = "0750 055 550";
-  const WHATSAPP_NUMBER = "254750055550";
+  const COMPANY_PHONE = "0756 669 960";
+  const WHATSAPP_NUMBER = "254756669960";
   const LOGO_PATH = "images/mrm-logo.png";
   const CURRENCY = "KES";
 
@@ -241,6 +241,7 @@
 
     if (!product) {
       gaugeSelect.innerHTML = '<option value="">Select gauge</option>';
+      gaugeSelect.disabled = false;
       return;
     }
 
