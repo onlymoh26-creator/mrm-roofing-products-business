@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -53,13 +54,8 @@
     }
 
     @keyframes floatingBounce {
-      0%, 100% {
-        transform: translateY(0);
-      }
-
-      50% {
-        transform: translateY(-12px);
-      }
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-12px); }
     }
 
     /* HEADER LOGO AND ALIGNMENT */
@@ -225,6 +221,199 @@
         padding: 25px 20px;
       }
     }
+
+    /* ROOFING QUOTATION SECTION */
+    .mrm-invoice-section {
+      background: #f3f6f9;
+      padding: 75px 0;
+      scroll-margin-top: 90px;
+    }
+
+    .mrm-invoice-heading {
+      max-width: 760px;
+      margin: 0 auto 32px;
+      text-align: center;
+    }
+
+    .mrm-invoice-heading h2 {
+      color: #092b49;
+      margin: 10px 0;
+    }
+
+    .mrm-invoice-heading p {
+      color: #687887;
+      line-height: 1.7;
+    }
+
+    .mrm-invoice-panel {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 35px;
+      background: #ffffff;
+      border: 1px solid #e1e8ee;
+      border-radius: 16px;
+      box-shadow: 0 12px 35px rgba(9, 43, 73, 0.08);
+    }
+
+    .mrm-invoice-panel h3 {
+      color: #092b49;
+      margin: 0 0 18px;
+      font-size: 19px;
+    }
+
+    .mrm-invoice-fields {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 18px;
+      margin-bottom: 30px;
+    }
+
+    .mrm-invoice-field {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .mrm-invoice-field label {
+      color: #253545;
+      font-size: 14px;
+      font-weight: 700;
+    }
+
+    .mrm-invoice-field input {
+      width: 100%;
+      min-height: 47px;
+      padding: 11px 13px;
+      border: 1px solid #d7e0e8;
+      border-radius: 8px;
+      background: #ffffff;
+      color: #253545;
+      font: inherit;
+      box-sizing: border-box;
+    }
+
+    .mrm-invoice-field input:focus {
+      outline: none;
+      border-color: #0878bd;
+      box-shadow: 0 0 0 3px rgba(8, 120, 189, 0.1);
+    }
+
+    .mrm-invoice-items-heading {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 15px;
+      margin: 8px 0 15px;
+    }
+
+    .mrm-invoice-items-heading h3 {
+      margin: 0;
+    }
+
+    #mrmAddInvoiceItem {
+      border: 0;
+      border-radius: 7px;
+      background: #0878bd;
+      color: #ffffff;
+      padding: 11px 17px;
+      font: inherit;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    #mrmAddInvoiceItem:hover {
+      background: #05649e;
+    }
+
+    #mrmInvoiceItems {
+      min-height: 65px;
+      margin-bottom: 22px;
+    }
+
+    .mrm-invoice-total {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 15px;
+      padding: 19px 20px;
+      margin: 20px 0;
+      border-radius: 9px;
+      background: #edf4f9;
+      color: #092b49;
+      font-weight: 800;
+    }
+
+    #mrmInvoiceTotal {
+      font-size: 21px;
+      color: #0878bd;
+    }
+
+    #mrmCreateInvoiceBtn {
+      width: 100%;
+      min-height: 52px;
+      border: 0;
+      border-radius: 8px;
+      background: #092b49;
+      color: #ffffff;
+      font: inherit;
+      font-weight: 800;
+      cursor: pointer;
+      transition: background 0.2s ease;
+    }
+
+    #mrmCreateInvoiceBtn:hover {
+      background: #0878bd;
+    }
+
+    #mrmCreateInvoiceBtn:disabled {
+      opacity: 0.65;
+      cursor: not-allowed;
+    }
+
+    #mrmInvoiceMessage {
+      margin-top: 16px;
+      color: #526273;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    #mrmInvoiceResults {
+      margin-top: 20px;
+    }
+
+    .mrm-invoice-note {
+      margin-top: 18px;
+      color: #687887;
+      font-size: 12px;
+      line-height: 1.7;
+      text-align: center;
+    }
+
+    @media (max-width: 600px) {
+      .mrm-invoice-section {
+        padding: 55px 0;
+      }
+
+      .mrm-invoice-panel {
+        padding: 22px 16px;
+        border-radius: 12px;
+      }
+
+      .mrm-invoice-fields {
+        grid-template-columns: 1fr;
+        gap: 14px;
+      }
+
+      .mrm-invoice-items-heading {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      .mrm-invoice-total {
+        padding: 16px;
+      }
+    }
   </style>
 </head>
 
@@ -253,7 +442,7 @@
       <a href="#gallery">Our Projects</a>
       <a href="#reviews">Customer Reviews</a>
       <a href="#faq">Frequently Asked Questions</a>
-      <a href="#mrmInvoiceSection">GET A ROOFING QUOTATION</a>
+      <a href="#mrmInvoiceSection">Get a Roofing Quotation</a>
       <a href="#contact">Contact Us</a>
     </nav>
   </div>
@@ -746,6 +935,89 @@
     </div>
   </section>
 
+  <!-- ROOFING QUOTATION / PRO-FORMA INVOICE -->
+  <section class="mrm-invoice-section" id="mrmInvoiceSection">
+    <div class="container">
+
+      <div class="mrm-invoice-heading">
+        <span class="section-label">REQUEST A ROOFING QUOTATION</span>
+        <h2>Generate Your Pro-forma Invoice</h2>
+        <p>Enter your details, select the roofing products and specifications you require, and generate your pro-forma invoice.</p>
+      </div>
+
+      <div class="mrm-invoice-panel">
+        <form id="mrmInvoiceForm">
+
+          <h3>Customer Details</h3>
+
+          <div class="mrm-invoice-fields">
+            <div class="mrm-invoice-field">
+              <label for="mrmCustomerName">Customer Name *</label>
+              <input
+                type="text"
+                id="mrmCustomerName"
+                name="customerName"
+                placeholder="Enter customer or company name"
+                autocomplete="name"
+                required>
+            </div>
+
+            <div class="mrm-invoice-field">
+              <label for="mrmCustomerPhone">Phone Number *</label>
+              <input
+                type="tel"
+                id="mrmCustomerPhone"
+                name="customerPhone"
+                placeholder="Enter phone number"
+                autocomplete="tel"
+                required>
+            </div>
+
+            <div class="mrm-invoice-field">
+              <label for="mrmCustomerLocation">Delivery Location *</label>
+              <input
+                type="text"
+                id="mrmCustomerLocation"
+                name="customerLocation"
+                placeholder="Enter town or delivery location"
+                autocomplete="address-level2"
+                required>
+            </div>
+          </div>
+
+          <div class="mrm-invoice-items-heading">
+            <h3>Products & Specifications</h3>
+            <button type="button" id="mrmAddInvoiceItem">+ Add Product</button>
+          </div>
+
+          <div id="mrmInvoiceItems">
+            <!-- Product rows are added by invoice.js -->
+          </div>
+
+          <div class="mrm-invoice-total">
+            <span>Estimated Invoice Total</span>
+            <span id="mrmInvoiceTotal">KSh 0.00</span>
+          </div>
+
+          <button type="submit" id="mrmCreateInvoiceBtn">
+            Generate Pro-forma Invoice
+          </button>
+
+          <div id="mrmInvoiceMessage" role="status" aria-live="polite"></div>
+
+          <div id="mrmInvoiceResults"></div>
+
+          <p class="mrm-invoice-note">
+            Prices and totals are subject to product specifications and server-side verification.
+            Accessories are not currently included in the online invoice catalogue. Contact the
+            MRM team for accessory enquiries.
+          </p>
+
+        </form>
+      </div>
+    </div>
+  </section>
+
   <!-- CONTACT -->
   <section class="contact-section section-padding" id="contact">
     <div class="container contact-layout">
@@ -783,7 +1055,7 @@
       <a href="#gallery">Our Projects</a>
       <a href="#reviews">Customer Reviews</a>
       <a href="#faq">Frequently Asked Questions</a>
-      <a href="#mrmInvoiceSection">GET A ROOFING QUOTATION</a>
+      <a href="#mrmInvoiceSection">Get a Roofing Quotation</a>
     </div>
 
     <div>
@@ -850,8 +1122,6 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 
 <script src="invoice.js"></script>
-
-<script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit&onload=onMrmTurnstileLoaded" defer></script>
 
 </body>
 </html>
