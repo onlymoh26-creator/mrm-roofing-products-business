@@ -1692,3 +1692,84 @@ img {
     height: 30px;
   }
 }
+
+/* MRM INVOICE FORM - MOBILE DISPLAY FIX */
+@media screen and (max-width: 650px) {
+
+  #mrmInvoiceSection {
+    width: 100%;
+    overflow-x: clip;
+    padding: 35px 0;
+  }
+
+  #mrmInvoiceSection .mrm-invoice-container {
+    width: 100%;
+    max-width: 100%;
+    padding: 20px 15px;
+    margin: 0 auto;
+    box-sizing: border-box;
+  }
+
+  #mrmInvoiceSection *,
+  #mrmInvoiceSection *::before,
+  #mrmInvoiceSection *::after {
+    box-sizing: border-box;
+  }
+
+  #mrmInvoiceSection .mrm-invoice-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 14px;
+    width: 100%;
+  }
+
+  #mrmInvoiceSection input,
+  #mrmInvoiceSection select,
+  #mrmInvoiceSection textarea {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    min-height: 44px;
+    font-size: 16px;
+    padding: 11px 12px;
+  }
+
+  #mrmInvoiceSection .mrm-invoice-item {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    width: 100%;
+    padding: 14px;
+    margin-bottom: 14px;
+  }
+
+  #mrmInvoiceSection .mrm-product-field {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+
+  #mrmInvoiceSection .mrm-gauge,
+  #mrmInvoiceSection .mrm-quantity {
+    width: 100%;
+    min-width: 0;
+  }
+
+  #mrmInvoiceSection .mrm-remove-item {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+
+  #mrmInvoiceSection button {
+    max-width: 100%;
+    min-height: 44px;
+    font-size: 15px;
+  }
+
+  #mrmInvoiceSection #mrmCreateInvoiceBtn {
+    width: 100%;
+  }
+
+  #mrmInvoiceSection #mrmInvoiceTotal {
+    font-size: 20px;
+  }
+}
