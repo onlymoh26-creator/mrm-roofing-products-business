@@ -1,4 +1,3 @@
-
 /* =========================================
    MABATI ROLLING MILLS
    MAIN WEBSITE JAVASCRIPT
@@ -9,7 +8,7 @@
    1. WHATSAPP CONTACT DETAILS
 ========================================= */
 
-const WHATSAPP_NUMBER = "254733608974";
+const WHATSAPP_NUMBER = "254750055550";
 
 const WHATSAPP_MESSAGE = `Hello MRM Team,
 
