@@ -1,48 +1,39 @@
 
 /* =========================================================
    MABATI ROLLING MILLS
-   ROOFING QUOTATION SYSTEM
-   File: invoice.js
-   Backend: Cloudflare Worker + D1 + R2
-
-   FEATURES:
-   - Generates pro-forma quotation PDFs
-   - Includes official company logo
-   - Verifies prices through the server
-   - Saves PDFs securely to Cloudflare R2
-   - Uses customer name in the PDF filename
-   - Provides download and online viewing
-   - Shares only the public quotation link via WhatsApp
-   - Automatic PDF download enabled
-   - TURNSTILE REMOVED
+   PROFESSIONAL PROFORMA INVOICE SYSTEM
+   API: CLOUDFLARE WORKER
+   TURNSTILE: REMOVED
    ========================================================= */
 
 (() => {
   "use strict";
 
-  /* 1. CONFIGURATION */
-
-  const API_BASE =
-    "https://mrm-invoice-api.onlymoh26.workers.dev";
-
+  const API_BASE = "https://mrm-invoice-api.onlymoh26.workers.dev";
+  const COMPANY_NAME = "MABATI ROLLING MILLS";
+  const COMPANY_PHONE = "0750 055 550";
+  const WHATSAPP_NUMBER = "254750055550";
   const LOGO_PATH = "images/mrm-logo.png";
-  const WHATSAPP_NUMBER = "254733608974";
   const CURRENCY = "KES";
 
   let catalogue = [];
-  let companyLogo = null;
+  let isSubmitting = false;
 
-  /* 2. GENERAL HELPERS */
+  const $ = (id) => document.getElementById(id);
 
-  function escapeHTML(value) {
-    return String(value ?? "").replace(/[&<>"']/g, character => ({
-      "&": "&amp;",
-      "<": "&lt;",
-      ">": "&gt;",
-      '"': "&quot;",
-      "'": "&#039;"
-    })[character]);
-  }
+  const elements = {
+    section: $("mrmInvoiceSection"),
+    form: $("mrmInvoiceForm"),
+    customerName: $("mrmCustomerName"),
+    customerPhone: $("mrmCustomerPhone"),
+    customerLocation: $("mrmCustomerLocation"),
+    items: $("mrmInvoiceItems"),
+    addItem: $("mrmAddInvoiceItem"),
+    total: $("mrmInvoiceTotal"),
+    message: $("mrmInvoiceMessage"),
+    createButton: $("mrmCreateInvoiceBtn"),
+    results: $("mrmInvoiceResults")
+  };
 
   function money(value) {
     return `${CURRENCY} ${Number(value || 0).toLocaleString("en-KE", {
@@ -51,28 +42,56 @@
     })}`;
   }
 
-  function createWhatsAppLink(message) {
-    return `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(message)}`;
+  function escapeHtml(value) {
+    return String(value ?? "").replace(/[&<>"']/g, (character) => ({
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#039;"
+    })[character]);
   }
 
-  /*
-   * Creates a clean filename from the customer's name.
-   * Example:
-   * Samuel Mwangi - MRM Proforma Invoice.pdf
-   */
-  function createCustomerFilename(customerName) {
-    const safeName = String(customerName || "")
-      .normalize("NFKC")
-      .replace(/[^\p{L}\p{N} ._-]+/gu, "")
-      .replace(/\s+/g, " ")
-      .trim()
-      .replace(/^[.\s_-]+|[.\s_-]+$/g, "");
-
-    return `${safeName || "Customer"} - MRM Proforma Invoice.pdf`;
+  function localDate() {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, "0");
+    const day = String(now.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
   }
 
-  async function apiRequest(endpoint, options = {}) {
-    const response = await fetch(`${API_BASE}${endpoint}`, {
+  function displayDate(value) {
+    const date = new Date(`${value}T00:00:00`);
+    return date.toLocaleDateString("en-KE", {
+      day: "2-digit",
+      month: "long",
+      year: "numeric"
+    });
+  }
+
+  function showMessage(message, type = "info") {
+    if (!elements.message) return;
+
+    const colours = {
+      info: "#164e78",
+      success: "#176b45",
+      error: "#b42318"
+    };
+
+    elements.message.textContent = message;
+    elements.message.style.color = colours[type] || colours.info;
+    elements.message.style.display = "block";
+  }
+
+  function clearMessage() {
+    if (elements.message) {
+      elements.message.textContent = "";
+      elements.message.style.display = "none";
+    }
+  }
+
+  async function apiRequest(path, options = {}) {
+    const response = await fetch(`${API_BASE}${path}`, {
       ...options,
       headers: {
         "Content-Type": "application/json",
@@ -85,1265 +104,742 @@
     try {
       data = await response.json();
     } catch {
-      throw new Error("The server returned an invalid response.");
+      throw new Error("The invoice server returned an invalid response.");
     }
 
     if (!response.ok || data.success === false) {
-      throw new Error(
-        data.message ||
-        data.error ||
-        "The quotation server could not complete your request."
-      );
+      throw new Error(data.error || "The invoice request could not be completed.");
     }
 
     return data;
   }
 
-  function showMessage(message, type = "info") {
-    const box = document.getElementById("mrmInvoiceMessage");
-    if (!box) return;
-
-    box.textContent = message;
-    box.className = `mrm-invoice-message ${type}`;
-    box.style.display = "block";
-
-    box.scrollIntoView({
-      behavior: "smooth",
-      block: "nearest"
-    });
-  }
-
-  function setLoading(loading) {
-    const button = document.getElementById("mrmCreateInvoiceBtn");
-    if (!button) return;
-
-    button.disabled = loading;
-
-    button.textContent = loading
-      ? "GENERATING YOUR QUOTATION..."
-      : "GET ROOFING QUOTATION";
-  }
-
-  /* 3. LOAD OFFICIAL COMPANY LOGO */
-
-  async function loadCompanyLogo() {
-    if (companyLogo) return companyLogo;
-
-    const logoURL = new URL(LOGO_PATH, document.baseURI);
-
-    const response = await fetch(logoURL.href, {
-      cache: "force-cache"
-    });
-
-    if (!response.ok) {
-      throw new Error(
-        `Company logo could not be loaded: ${response.status}`
-      );
-    }
-
-    const blob = await response.blob();
-
-    if (!blob.type.startsWith("image/")) {
-      throw new Error("The company logo file is not a valid image.");
-    }
-
-    const dataURL = await new Promise((resolve, reject) => {
-      const reader = new FileReader();
-
-      reader.onload = () => resolve(reader.result);
-      reader.onerror = () => reject(
-        new Error("Could not read the company logo.")
-      );
-
-      reader.readAsDataURL(blob);
-    });
-
-    const dimensions = await new Promise((resolve, reject) => {
-      const image = new Image();
-
-      image.onload = () => {
-        resolve({
-          width: image.naturalWidth,
-          height: image.naturalHeight
-        });
-      };
-
-      image.onerror = () => reject(
-        new Error("The company logo image could not be decoded.")
-      );
-
-      image.src = dataURL;
-    });
-
-    companyLogo = {
-      data: dataURL,
-      width: dimensions.width,
-      height: dimensions.height
-    };
-
-    return companyLogo;
-  }
-
-  /* 4. QUOTATION STYLES */
-
-  function addStyles() {
-    if (document.getElementById("mrmInvoiceStyles")) return;
-
-    const style = document.createElement("style");
-    style.id = "mrmInvoiceStyles";
-
-    style.textContent = `
-      #mrmInvoiceSection {
-        padding: 65px 20px;
-        background: #f4f6f9;
-        color: #182b43;
-      }
-
-      #mrmInvoiceSection .mrm-invoice-container {
-        max-width: 1050px;
-        margin: auto;
-        background: #ffffff;
-        padding: 30px;
-        border-radius: 12px;
-        box-shadow: 0 5px 25px rgba(0,0,0,.07);
-      }
-
-      #mrmInvoiceSection h2 {
-        text-align: center;
-        color: #12365a;
-        margin-bottom: 12px;
-      }
-
-      #mrmInvoiceSection .mrm-invoice-intro {
-        text-align: center;
-        color: #64748b;
-        margin-bottom: 30px;
-        line-height: 1.6;
-      }
-
-      #mrmInvoiceSection .mrm-invoice-grid {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 16px;
-      }
-
-      #mrmInvoiceSection .mrm-invoice-field {
-        margin-bottom: 18px;
-        min-width: 0;
-      }
-
-      #mrmInvoiceSection label {
-        display: block;
-        font-weight: 600;
-        margin-bottom: 7px;
-        color: #24364b;
-      }
-
-      #mrmInvoiceSection input,
-      #mrmInvoiceSection select {
-        width: 100%;
-        box-sizing: border-box;
-        padding: 12px;
-        border: 1px solid #cbd5e1;
-        border-radius: 6px;
-        background: #ffffff;
-        font: inherit;
-      }
-
-      #mrmInvoiceSection .mrm-invoice-items {
-        margin-top: 25px;
-      }
-
-      #mrmInvoiceSection .mrm-invoice-item {
-        display: grid;
-        grid-template-columns: 2fr 1fr 1fr auto;
-        gap: 10px;
-        align-items: end;
-        padding: 15px 0;
-        border-bottom: 1px solid #e2e8f0;
-      }
-
-      #mrmInvoiceSection .mrm-invoice-item label {
-        font-size: 13px;
-      }
-
-      #mrmInvoiceSection button {
-        cursor: pointer;
-        border: none;
-        border-radius: 6px;
-        padding: 12px 18px;
-        font-weight: 700;
-      }
-
-      #mrmAddInvoiceItem {
-        background: #e5edf5;
-        color: #12365a;
-        margin-top: 18px;
-      }
-
-      #mrmCreateInvoiceBtn {
-        width: 100%;
-        margin-top: 25px;
-        padding: 16px;
-        background: #12365a;
-        color: #ffffff;
-        font-size: 15px;
-      }
-
-      #mrmCreateInvoiceBtn:disabled {
-        opacity: .6;
-        cursor: wait;
-      }
-
-      #mrmInvoiceSection .mrm-remove-item {
-        background: #fee2e2;
-        color: #991b1b;
-      }
-
-      #mrmInvoiceSection .mrm-invoice-total {
-        text-align: right;
-        font-size: 20px;
-        font-weight: 800;
-        margin-top: 25px;
-        color: #12365a;
-      }
-
-      #mrmInvoiceSection .mrm-invoice-message {
-        display: none;
-        margin-top: 20px;
-        padding: 14px;
-        border-radius: 6px;
-        line-height: 1.5;
-      }
-
-      #mrmInvoiceSection .mrm-invoice-message.error {
-        background: #fee2e2;
-        color: #991b1b;
-      }
-
-      #mrmInvoiceSection .mrm-invoice-message.success {
-        background: #dcfce7;
-        color: #166534;
-      }
-
-      #mrmInvoiceSection .mrm-invoice-message.info {
-        background: #e0f2fe;
-        color: #075985;
-      }
-
-      #mrmInvoiceSection .mrm-invoice-results {
-        margin-top: 20px;
-        padding: 20px;
-        border: 1px solid #dbe4ee;
-        border-radius: 8px;
-        display: none;
-      }
-
-      #mrmInvoiceSection .mrm-invoice-results a {
-        display: inline-block;
-        margin: 8px 8px 8px 0;
-        padding: 12px 16px;
-        border-radius: 6px;
-        text-decoration: none;
-        font-weight: 700;
-        background: #12365a;
-        color: #ffffff;
-      }
-
-      #mrmInvoiceSection .mrm-invoice-results a.mrm-whatsapp {
-        background: #15803d;
-      }
-
-      #mrmInvoiceSection .mrm-small-note {
-        font-size: 13px;
-        color: #64748b;
-        line-height: 1.6;
-        margin-top: 18px;
-      }
-
-      @media(max-width: 650px) {
-        #mrmInvoiceSection .mrm-invoice-container {
-          padding: 20px 15px;
-        }
-
-        #mrmInvoiceSection .mrm-invoice-grid {
-          grid-template-columns: 1fr;
-        }
-
-        #mrmInvoiceSection .mrm-invoice-item {
-          grid-template-columns: 1fr 1fr;
-        }
-
-        #mrmInvoiceSection .mrm-invoice-item .mrm-product-field {
-          grid-column: 1 / -1;
-        }
-
-        #mrmInvoiceSection .mrm-remove-item {
-          grid-column: 1 / -1;
-        }
-      }
-    `;
-
-    document.head.appendChild(style);
-  }
-
-  /* 5. CREATE QUOTATION SECTION */
-
-  function createInvoiceSection() {
-    const existingSection = document.getElementById(
-      "mrmInvoiceSection"
-    );
-
-    const quoteForm = document.getElementById("quotationForm");
-
-    const quoteSection = quoteForm
-      ? (
-          quoteForm.closest(".quotation-section") ||
-          quoteForm.closest("section")
-        )
-      : null;
-
-    if (existingSection) {
-      if (
-        quoteSection &&
-        quoteSection !== existingSection
-      ) {
-        quoteSection.remove();
-      }
-
-      return;
-    }
-
-    const section = document.createElement("section");
-    section.id = "mrmInvoiceSection";
-
-    section.innerHTML = `
-      <div class="mrm-invoice-container">
-
-        <h2>GET A ROOFING QUOTATION</h2>
-
-        <p class="mrm-invoice-intro">
-          Generate your roofing materials quotation instantly.
-          Select your products, enter your details and receive
-          your downloadable pro-forma quotation.
-        </p>
-
-        <form id="mrmInvoiceForm">
-
-          <div class="mrm-invoice-grid">
-
-            <div class="mrm-invoice-field">
-              <label for="mrmCustomerName">
-                Customer / Company Name *
-              </label>
-              <input
-                id="mrmCustomerName"
-                name="customerName"
-                type="text"
-                required
-                maxlength="120"
-                placeholder="Enter customer or company name">
-            </div>
-
-            <div class="mrm-invoice-field">
-              <label for="mrmCustomerPhone">
-                Phone Number *
-              </label>
-              <input
-                id="mrmCustomerPhone"
-                name="customerPhone"
-                type="tel"
-                required
-                maxlength="30"
-                placeholder="Enter phone number">
-            </div>
-
-            <div class="mrm-invoice-field">
-              <label for="mrmCustomerLocation">
-                Delivery Location *
-              </label>
-              <input
-                id="mrmCustomerLocation"
-                name="customerLocation"
-                type="text"
-                required
-                maxlength="200"
-                placeholder="Enter delivery location">
-            </div>
-
-          </div>
-
-          <div class="mrm-invoice-items">
-
-            <h3>PRODUCT DETAILS</h3>
-
-            <div id="mrmInvoiceItems"></div>
-
-            <button type="button" id="mrmAddInvoiceItem">
-              + ADD ANOTHER PRODUCT
-            </button>
-
-          </div>
-
-          <div class="mrm-invoice-total">
-            Indicative Total:
-            <span id="mrmInvoiceTotal">KES 0.00</span>
-          </div>
-
-          <p class="mrm-small-note">
-            The displayed total is indicative. Final prices and totals
-            are verified by the MRM quotation server before the
-            quotation is issued.
-          </p>
-
-          <div
-            id="mrmInvoiceMessage"
-            class="mrm-invoice-message">
-          </div>
-
-          <button type="submit" id="mrmCreateInvoiceBtn">
-            GET ROOFING QUOTATION
-          </button>
-
-        </form>
-
-        <div id="mrmInvoiceResults" class="mrm-invoice-results"></div>
-
-        <p class="mrm-small-note">
-          A pro-forma quotation is not proof of payment.
-          Payments must be made through authorised official payment
-          channels. No cash payments are accepted.
-        </p>
-
-      </div>
-    `;
-
-    if (quoteForm) {
-      if (quoteSection && quoteSection.parentNode) {
-        quoteSection.replaceWith(section);
-        return;
-      }
-
-      quoteForm.replaceWith(section);
-      return;
-    }
-
-    const footer = document.querySelector("footer");
-
-    if (footer && footer.parentNode) {
-      footer.parentNode.insertBefore(section, footer);
-    } else {
-      document.body.appendChild(section);
-    }
-  }
-
-  /* 6. NAVIGATION LINK */
-
-  function addNavigationLink() {
-    const navLists = document.querySelectorAll(
-      "header nav ul, nav ul"
-    );
-
-    navLists.forEach(list => {
-      if (list.querySelector('[href="#mrmInvoiceSection"]')) return;
-
-      const item = document.createElement("li");
-      const link = document.createElement("a");
-
-      link.href = "#mrmInvoiceSection";
-      link.textContent = "Get a Roofing Quotation";
-
-      item.appendChild(link);
-      list.appendChild(item);
-    });
-  }
-
-  /* 7. LOAD SERVER CATALOGUE */
-
   async function loadCatalogue() {
-    const response = await apiRequest("/api/catalogue");
+    const data = await apiRequest("/api/catalogue");
 
-    catalogue = Array.isArray(response.products)
-      ? response.products
-      : [];
-
-    if (!catalogue.length) {
-      throw new Error("The server product catalogue is empty.");
+    if (!Array.isArray(data.products) || !data.products.length) {
+      throw new Error("The product catalogue is currently unavailable.");
     }
 
-    addInvoiceItem();
+    catalogue = data.products;
+    return catalogue;
   }
 
-  /* 8. PRODUCT OPTIONS */
-
-  function productOptions() {
-    return `
-      <option value="">Select roofing product</option>
-      ${catalogue.map((product, index) => `
-        <option value="${index}">
-          ${escapeHTML(product.name)}
-        </option>
-      `).join("")}
-    `;
+  function productByName(name) {
+    return catalogue.find((product) => product.name === name);
   }
 
-  /* 9. ADD PRODUCT ROW */
-
-  function addInvoiceItem() {
-    const container = document.getElementById("mrmInvoiceItems");
-    if (!container) return;
-
+  function createInvoiceRow() {
     const row = document.createElement("div");
     row.className = "mrm-invoice-item";
 
+    row.style.cssText = [
+      "display:grid",
+      "grid-template-columns:2fr 1fr 1fr 1fr auto",
+      "gap:10px",
+      "align-items:end",
+      "padding:14px",
+      "margin-bottom:12px",
+      "border:1px solid #dce3e9",
+      "border-radius:10px",
+      "background:#fff"
+    ].join(";");
+
     row.innerHTML = `
-      <div class="mrm-invoice-field mrm-product-field">
-        <label>Roofing Product *</label>
-        <select class="mrm-product" required>
-          ${productOptions()}
+      <div>
+        <label style="display:block;font-weight:600;margin-bottom:6px">
+          Product
+        </label>
+        <select class="mrm-product" required
+          style="width:100%;padding:11px;border:1px solid #ccd5dd;border-radius:7px">
+          <option value="">Select product</option>
+          ${catalogue.map((product) => `
+            <option value="${escapeHtml(product.name)}">
+              ${escapeHtml(product.name)}
+            </option>
+          `).join("")}
         </select>
       </div>
 
-      <div class="mrm-invoice-field">
-        <label>Gauge / Specification</label>
-        <select class="mrm-gauge" required>
-          <option value="">Select product first</option>
+      <div>
+        <label style="display:block;font-weight:600;margin-bottom:6px">
+          Gauge
+        </label>
+        <select class="mrm-gauge"
+          style="width:100%;padding:11px;border:1px solid #ccd5dd;border-radius:7px">
+          <option value="">Select gauge</option>
         </select>
       </div>
 
-      <div class="mrm-invoice-field">
-        <label>Quantity / Metres *</label>
-        <input
-          class="mrm-quantity"
-          type="number"
-          min="0.1"
-          step="0.1"
-          value="2"
-          required>
+      <div>
+        <label style="display:block;font-weight:600;margin-bottom:6px">
+          Quantity
+        </label>
+        <input class="mrm-quantity" type="number" min="0.01"
+          max="100000" step="0.01" value="1" required
+          style="width:100%;padding:11px;border:1px solid #ccd5dd;border-radius:7px">
       </div>
 
-      <button type="button" class="mrm-remove-item">
-        REMOVE
-      </button>
+      <div>
+        <label style="display:block;font-weight:600;margin-bottom:6px">
+          Unit price
+        </label>
+        <div class="mrm-unit-price"
+          style="padding:11px 4px;font-weight:600">KES 0.00</div>
+        <div class="mrm-line-total"
+          style="font-size:12px;color:#657585">Total: KES 0.00</div>
+      </div>
+
+      <div>
+        <button type="button" class="mrm-remove-item"
+          aria-label="Remove product"
+          style="padding:10px 13px;border:0;border-radius:7px;background:#fce8e6;color:#b42318;cursor:pointer">
+          Remove
+        </button>
+      </div>
     `;
 
-    container.appendChild(row);
+    const productSelect = row.querySelector(".mrm-product");
+    const gaugeSelect = row.querySelector(".mrm-gauge");
+    const quantityInput = row.querySelector(".mrm-quantity");
 
-    row.querySelector(".mrm-product").addEventListener(
-      "change",
-      () => updateGaugeOptions(row)
-    );
+    productSelect.addEventListener("change", () => {
+      updateGaugeOptions(row);
+      updateRowPrice(row);
+      updateInvoiceTotal();
+    });
 
-    row.querySelector(".mrm-gauge").addEventListener(
-      "change",
-      updateTotal
-    );
+    gaugeSelect.addEventListener("change", () => {
+      updateRowPrice(row);
+      updateInvoiceTotal();
+    });
 
-    row.querySelector(".mrm-quantity").addEventListener(
-      "input",
-      updateTotal
-    );
+    quantityInput.addEventListener("input", () => {
+      updateRowPrice(row);
+      updateInvoiceTotal();
+    });
 
-    row.querySelector(".mrm-remove-item").addEventListener(
-      "click",
-      () => {
-        row.remove();
-        updateTotal();
+    row.querySelector(".mrm-remove-item").addEventListener("click", () => {
+      row.remove();
+
+      if (!elements.items.querySelector(".mrm-invoice-item")) {
+        addInvoiceRow();
       }
-    );
 
-    updateTotal();
+      updateInvoiceTotal();
+    });
+
+    return row;
   }
 
-  /* 10. GAUGE OPTIONS */
-
   function updateGaugeOptions(row) {
-    const productIndex = row.querySelector(".mrm-product").value;
+    const name = row.querySelector(".mrm-product").value;
+    const product = productByName(name);
     const gaugeSelect = row.querySelector(".mrm-gauge");
 
     gaugeSelect.innerHTML = "";
 
-    if (productIndex === "") {
-      gaugeSelect.innerHTML =
-        '<option value="">Select product first</option>';
-      updateTotal();
+    if (!product) {
+      gaugeSelect.innerHTML = '<option value="">Select gauge</option>';
       return;
     }
 
-    const product = catalogue[Number(productIndex)];
-    const prices = product?.prices || {};
-    const gauges = Object.keys(prices);
+    const gauges = Object.keys(product.prices || {});
 
-    if (!gauges.length) {
-      gaugeSelect.innerHTML =
-        '<option value="">Unavailable</option>';
-      updateTotal();
+    if (product.unit === "piece") {
+      gaugeSelect.innerHTML = '<option value="">Not applicable</option>';
+      gaugeSelect.disabled = true;
       return;
     }
 
-    gauges.forEach(gauge => {
-      const option = document.createElement("option");
-      option.value = gauge;
-      option.textContent = gauge || "Not applicable";
-      gaugeSelect.appendChild(option);
-    });
-
-    updateTotal();
+    gaugeSelect.disabled = false;
+    gaugeSelect.innerHTML =
+      '<option value="">Select gauge</option>' +
+      gauges.map((gauge) =>
+        `<option value="${escapeHtml(gauge)}">${escapeHtml(gauge)}</option>`
+      ).join("");
   }
 
-  /* 11. COLLECT PRODUCT INPUT */
+  function getSelectedPrice(row) {
+    const name = row.querySelector(".mrm-product").value;
+    const gauge = row.querySelector(".mrm-gauge").value;
+    const product = productByName(name);
 
-  function getSelectedItems() {
-    const rows = document.querySelectorAll(".mrm-invoice-item");
+    if (!product) return 0;
 
-    return Array.from(rows).map(row => {
-      const productIndex = row.querySelector(".mrm-product").value;
-      const gauge = row.querySelector(".mrm-gauge").value;
+    const priceKey = product.unit === "piece" ? "" : gauge;
+    return Number(product.prices[priceKey] || 0);
+  }
 
-      const quantity = Number(
-        row.querySelector(".mrm-quantity").value
-      );
+  function updateRowPrice(row) {
+    const price = getSelectedPrice(row);
+    const quantity = Number(row.querySelector(".mrm-quantity").value || 0);
+    const total = price * quantity;
 
-      if (
-        productIndex === "" ||
-        !Number.isFinite(quantity) ||
-        quantity <= 0
-      ) {
-        return null;
+    row.querySelector(".mrm-unit-price").textContent = money(price);
+    row.querySelector(".mrm-line-total").textContent = `Total: ${money(total)}`;
+  }
+
+  function updateInvoiceTotal() {
+    if (!elements.items) return;
+
+    let total = 0;
+
+    elements.items.querySelectorAll(".mrm-invoice-item").forEach((row) => {
+      const price = getSelectedPrice(row);
+      const quantity = Number(row.querySelector(".mrm-quantity").value || 0);
+      total += price * quantity;
+    });
+
+    if (elements.total) {
+      elements.total.textContent = money(total);
+    }
+  }
+
+  function addInvoiceRow() {
+    if (!elements.items) return;
+
+    const row = createInvoiceRow();
+    elements.items.appendChild(row);
+    updateInvoiceTotal();
+  }
+
+  function collectInvoiceItems() {
+    const rows = [...elements.items.querySelectorAll(".mrm-invoice-item")];
+
+    if (!rows.length) {
+      throw new Error("Add at least one product to the invoice.");
+    }
+
+    return rows.map((row) => {
+      const name = row.querySelector(".mrm-product").value;
+      const product = productByName(name);
+      const quantityValue = row.querySelector(".mrm-quantity").value;
+      const quantity = Number(quantityValue);
+
+      if (!product) {
+        throw new Error("Please select a valid product on every row.");
       }
 
-      const product = catalogue[Number(productIndex)];
+      if (!Number.isFinite(quantity) || quantity <= 0) {
+        throw new Error(`Enter a valid quantity for ${name}.`);
+      }
 
-      if (!product) return null;
+      const gauge = product.unit === "piece"
+        ? ""
+        : row.querySelector(".mrm-gauge").value;
 
-      if (!Object.prototype.hasOwnProperty.call(product.prices, gauge)) {
-        return null;
+      if (product.unit !== "piece" && !gauge) {
+        throw new Error(`Select a gauge for ${name}.`);
       }
 
       return {
-        name: product.name,
+        name,
         category: product.category,
         unit: product.unit,
         gauge,
         quantity
       };
-    }).filter(Boolean);
-  }
-
-  /* 12. INDICATIVE TOTAL */
-
-  function updateTotal() {
-    const rows = document.querySelectorAll(".mrm-invoice-item");
-    let total = 0;
-
-    rows.forEach(row => {
-      const productIndex = row.querySelector(".mrm-product").value;
-      const gauge = row.querySelector(".mrm-gauge").value;
-
-      const quantity = Number(
-        row.querySelector(".mrm-quantity").value
-      );
-
-      if (
-        productIndex === "" ||
-        !Number.isFinite(quantity) ||
-        quantity <= 0
-      ) {
-        return;
-      }
-
-      const product = catalogue[Number(productIndex)];
-
-      if (
-        !product ||
-        !Object.prototype.hasOwnProperty.call(product.prices, gauge)
-      ) {
-        return;
-      }
-
-      total += Number(product.prices[gauge]) * quantity;
     });
-
-    const totalElement = document.getElementById("mrmInvoiceTotal");
-
-    if (totalElement) {
-      totalElement.textContent = money(total);
-    }
   }
 
-  /* 13. GENERATE PRO-FORMA QUOTATION PDF */
+  function loadImage(url) {
+    return new Promise((resolve) => {
+      const image = new Image();
+      image.onload = () => resolve(image);
+      image.onerror = () => resolve(null);
+      image.src = url;
+    });
+  }
 
-  function createInvoicePDF(invoice) {
+  function addPdfText(pdf, text, x, y, options = {}) {
+    pdf.setFont(options.font || "helvetica", options.style || "normal");
+    pdf.setFontSize(options.size || 10);
+    pdf.setTextColor(...(options.color || [45, 57, 69]));
+    pdf.text(String(text ?? ""), x, y, options.extra || {});
+  }
+
+  async function createInvoicePdf(prepared, customer, invoiceDate) {
     if (!window.jspdf || !window.jspdf.jsPDF) {
-      throw new Error(
-        "The PDF library is missing. Check the jsPDF script in index.html."
-      );
+      throw new Error("PDF library is missing. Please reload the page.");
     }
 
     const { jsPDF } = window.jspdf;
-    const pdf = new jsPDF();
-
+    const pdf = new jsPDF("p", "mm", "a4");
     const pageWidth = pdf.internal.pageSize.getWidth();
+    const pageHeight = pdf.internal.pageSize.getHeight();
     const margin = 15;
+    const navy = [9, 43, 73];
+    const blue = [8, 120, 189];
+    const grey = [102, 117, 132];
+    const pale = [242, 246, 249];
 
-    const invoiceNumber = invoice.invoiceNumber;
-    const items = invoice.items || [];
-    const total = Number(invoice.total || 0);
-    const invoiceDate = new Date().toLocaleDateString("en-KE");
+    pdf.setFillColor(...navy);
+    pdf.rect(0, 0, pageWidth, 4, "F");
 
-    let y = 48;
+    const logo = await loadImage(LOGO_PATH);
 
-    if (companyLogo) {
-      const maxLogoWidth = 30;
-      const maxLogoHeight = 30;
-
-      const ratio = Math.min(
-        maxLogoWidth / companyLogo.width,
-        maxLogoHeight / companyLogo.height
-      );
-
-      const logoWidth = companyLogo.width * ratio;
-      const logoHeight = companyLogo.height * ratio;
-
-      const logoX = margin;
-      const logoY = 9 + (maxLogoHeight - logoHeight) / 2;
-
-      pdf.addImage(
-        companyLogo.data,
-        "PNG",
-        logoX,
-        logoY,
-        logoWidth,
-        logoHeight
-      );
+    if (logo) {
+      try {
+        pdf.addImage(logo, "PNG", margin, 11, 30, 24, undefined, "FAST");
+      } catch {
+        // Continue with the text header if the logo format is unsupported.
+      }
     }
 
-    const companyTextX = companyLogo ? 52 : margin;
+    addPdfText(pdf, COMPANY_NAME, 50, 17, {
+      size: 14,
+      style: "bold",
+      color: navy
+    });
 
-    pdf.setFont("helvetica", "bold");
-    pdf.setFontSize(17);
-    pdf.setTextColor(18, 54, 90);
+    addPdfText(pdf, "ROOFING PRODUCTS & SOLUTIONS", 50, 23, {
+      size: 8,
+      style: "bold",
+      color: grey
+    });
 
-    pdf.text(
-      "MABATI ROLLING MILLS",
-      companyTextX,
-      20
-    );
+    addPdfText(pdf, `Call: ${COMPANY_PHONE}`, 50, 30, {
+      size: 9,
+      color: grey
+    });
 
-    pdf.setFont("helvetica", "normal");
-    pdf.setFontSize(9);
-    pdf.setTextColor(80, 80, 80);
+    pdf.setDrawColor(220, 227, 233);
+    pdf.line(margin, 41, pageWidth - margin, 41);
 
-    pdf.text(
-      "ROOFING PRODUCTS & SOLUTIONS",
-      companyTextX,
-      28
-    );
+    addPdfText(pdf, "PROFORMA INVOICE", margin, 54, {
+      size: 20,
+      style: "bold",
+      color: navy
+    });
 
-    pdf.text(
-      "Phone: 0733 608 974",
-      pageWidth - margin,
-      20,
-      { align: "right" }
-    );
+    addPdfText(pdf, "CUSTOMER QUOTATION", margin, 60, {
+      size: 8,
+      style: "bold",
+      color: grey
+    });
 
-    pdf.setDrawColor(18, 54, 90);
-    pdf.setLineWidth(0.6);
+    const cardX = pageWidth - 75;
+    pdf.setFillColor(...pale);
+    pdf.roundedRect(cardX, 46, 60, 25, 3, 3, "F");
 
-    pdf.line(
-      margin,
-      43,
-      pageWidth - margin,
-      43
-    );
+    addPdfText(pdf, "INVOICE NUMBER", cardX + 5, 53, {
+      size: 7,
+      style: "bold",
+      color: grey
+    });
 
-    pdf.setFont("helvetica", "bold");
-    pdf.setFontSize(17);
-    pdf.setTextColor(18, 54, 90);
-    pdf.text("PRO-FORMA INVOICE", margin, y);
+    addPdfText(pdf, prepared.invoiceNumber, cardX + 5, 59, {
+      size: 9,
+      style: "bold",
+      color: navy
+    });
 
-    y += 10;
+    addPdfText(pdf, "DATE", cardX + 5, 66, {
+      size: 7,
+      style: "bold",
+      color: grey
+    });
 
-    pdf.setFont("helvetica", "normal");
-    pdf.setFontSize(10);
-    pdf.setTextColor(0, 0, 0);
+    addPdfText(pdf, displayDate(invoiceDate), cardX + 25, 66, {
+      size: 8,
+      color: navy
+    });
 
-    pdf.text(`Invoice Number: ${invoiceNumber}`, margin, y);
+    // Customer details panel
+    pdf.setFillColor(...pale);
+    pdf.roundedRect(margin, 79, pageWidth - margin * 2, 31, 3, 3, "F");
 
-    pdf.text(
-      `Date: ${invoiceDate}`,
-      pageWidth - margin,
-      y,
-      { align: "right" }
-    );
+    addPdfText(pdf, "BILL TO", margin + 6, 87, {
+      size: 8,
+      style: "bold",
+      color: blue
+    });
 
-    y += 12;
+    addPdfText(pdf, customer.name, margin + 6, 95, {
+      size: 11,
+      style: "bold",
+      color: navy
+    });
 
-    pdf.setFont("helvetica", "bold");
-    pdf.text("BILL TO:", margin, y);
+    addPdfText(pdf, `Phone: ${customer.phone}`, margin + 6, 102, {
+      size: 8,
+      color: grey
+    });
 
-    y += 7;
+    addPdfText(pdf, `Location: ${customer.location}`, pageWidth / 2, 95, {
+      size: 9,
+      color: navy
+    });
 
-    pdf.setFont("helvetica", "normal");
+    addPdfText(pdf, "PAYMENT STATUS", pageWidth - 55, 87, {
+      size: 7,
+      style: "bold",
+      color: grey
+    });
 
-    pdf.text(
-      `Customer: ${document.getElementById("mrmCustomerName").value.trim()}`,
-      margin,
-      y
-    );
+    pdf.setFillColor(255, 244, 219);
+    pdf.roundedRect(pageWidth - 55, 91, 39, 10, 2, 2, "F");
 
-    y += 6;
+    addPdfText(pdf, "PENDING", pageWidth - 35.5, 97.5, {
+      size: 8,
+      style: "bold",
+      color: [151, 93, 0],
+      extra: { align: "center" }
+    });
 
-    pdf.text(
-      `Phone: ${document.getElementById("mrmCustomerPhone").value.trim()}`,
-      margin,
-      y
-    );
-
-    y += 6;
-
-    pdf.text(
-      `Location: ${document.getElementById("mrmCustomerLocation").value.trim()}`,
-      margin,
-      y
-    );
-
-    y += 12;
-
-    const tableRows = items.map((item, index) => [
+    const tableRows = prepared.items.map((item, index) => [
       String(index + 1),
-      `${item.name} (${item.gauge || "Standard"})`,
-      `${item.quantity} ${item.unit}`,
+      item.name,
+      item.gauge || "—",
+      `${Number(item.quantity).toLocaleString("en-KE")} ${item.unit}`,
       money(item.unitPrice),
       money(item.total)
     ]);
 
     if (typeof pdf.autoTable !== "function") {
-      throw new Error(
-        "PDF table library is missing. Check the AutoTable script in index.html."
-      );
+      throw new Error("PDF table library is missing. Please reload the page.");
     }
 
     pdf.autoTable({
-      startY: y,
+      startY: 119,
       head: [[
-        "No.",
-        "Description",
-        "Quantity",
-        "Unit Price",
-        "Amount"
+        "#",
+        "PRODUCT DESCRIPTION",
+        "GAUGE",
+        "QUANTITY",
+        "UNIT PRICE",
+        "AMOUNT"
       ]],
       body: tableRows,
       theme: "grid",
+      margin: { left: margin, right: margin, bottom: 25 },
       styles: {
+        font: "helvetica",
         fontSize: 8,
-        cellPadding: 3
+        cellPadding: 3.5,
+        textColor: [45, 57, 69],
+        lineColor: [222, 228, 234],
+        lineWidth: 0.15,
+        valign: "middle"
       },
       headStyles: {
-        fillColor: [18, 54, 90]
+        fillColor: navy,
+        textColor: [255, 255, 255],
+        fontStyle: "bold",
+        fontSize: 7
       },
-      margin: {
-        left: margin,
-        right: margin
+      alternateRowStyles: {
+        fillColor: [248, 250, 252]
+      },
+      columnStyles: {
+        0: { cellWidth: 9, halign: "center" },
+        1: { cellWidth: 55 },
+        2: { cellWidth: 17, halign: "center" },
+        3: { cellWidth: 27, halign: "center" },
+        4: { cellWidth: 30, halign: "right" },
+        5: { cellWidth: 32, halign: "right" }
       }
     });
 
-    y = pdf.lastAutoTable.finalY + 12;
+    let finalY = pdf.lastAutoTable.finalY + 10;
 
-    if (y > 245) {
+    if (finalY > pageHeight - 65) {
       pdf.addPage();
-      y = 20;
+      finalY = 25;
     }
 
-    pdf.setFont("helvetica", "bold");
-    pdf.setFontSize(12);
-    pdf.setTextColor(18, 54, 90);
+    const totalBoxWidth = 75;
+    const totalBoxX = pageWidth - margin - totalBoxWidth;
 
-    pdf.text(
-      `TOTAL: ${money(total)}`,
-      pageWidth - margin,
-      y,
-      { align: "right" }
-    );
+    pdf.setFillColor(...navy);
+    pdf.roundedRect(totalBoxX, finalY, totalBoxWidth, 20, 2, 2, "F");
 
-    y += 12;
+    addPdfText(pdf, "TOTAL AMOUNT", totalBoxX + 5, finalY + 7, {
+      size: 7,
+      style: "bold",
+      color: [220, 230, 239]
+    });
 
-    pdf.setDrawColor(190, 35, 35);
-    pdf.setTextColor(190, 35, 35);
-    pdf.setLineWidth(1.1);
+    addPdfText(pdf, money(prepared.total), totalBoxX + 5, finalY + 15, {
+      size: 11,
+      style: "bold",
+      color: [255, 255, 255]
+    });
 
-    pdf.rect(pageWidth - 65, y, 48, 15);
+    const termsY = finalY + 32;
 
-    pdf.setFont("helvetica", "bold");
-    pdf.setFontSize(13);
-
-    pdf.text(
-      "PENDING",
-      pageWidth - 41,
-      y + 10,
-      { align: "center" }
-    );
-
-    y += 23;
-
-    if (y > 225) {
-      pdf.addPage();
-      y = 20;
-    }
-
-    pdf.setTextColor(18, 54, 90);
-    pdf.setFontSize(11);
-    pdf.text("TERMS & CONDITIONS", margin, y);
-
-    y += 7;
-
-    pdf.setTextColor(40, 40, 40);
-    pdf.setFont("helvetica", "normal");
-    pdf.setFontSize(8);
+    addPdfText(pdf, "TERMS & CONDITIONS", margin, termsY, {
+      size: 9,
+      style: "bold",
+      color: navy
+    });
 
     const terms = [
-      "1. NO CASH PAYMENTS: All payments must be made through official authorised payment channels, including approved Paybill or bank transfer. No cash payments are accepted.",
-      "2. ORDER CONFIRMATION: Confirm product descriptions, gauges, thickness, lengths, colours, quantities and delivery details before payment and processing.",
-      "3. PRODUCT QUALITY: Materials supplied shall correspond to the agreed product descriptions and specifications, subject to manufacturer standards and availability.",
-      "4. DELIVERY ARRANGEMENTS: Delivery timelines and charges shall be agreed before fulfilment. The customer must provide accurate delivery and offloading details.",
-      "5. QUANTITIES AND MEASUREMENTS: The customer is responsible for confirming measurements and quantities. Additional materials may attract extra charges.",
-      "6. CHANGES AND CANCELLATIONS: Changes to confirmed orders may affect pricing, availability and delivery arrangements.",
-      "7. BALANCE PAYMENT: Any outstanding balance must be settled as agreed before delivery completion or release of goods.",
-      "8. PRODUCT INSPECTION: Inspect materials upon delivery and report shortages or discrepancies promptly."
+      "1. This is a proforma invoice and not a payment receipt.",
+      "2. Product availability and final delivery arrangements are subject to confirmation.",
+      "3. Kindly confirm the invoice details before making payment.",
+      "4. Use official MRM payment instructions only."
     ];
 
-    terms.forEach(term => {
-      const lines = pdf.splitTextToSize(
-        term,
-        pageWidth - margin * 2
-      );
+    let termY = termsY + 7;
 
-      if (y + lines.length * 4 > 280) {
+    terms.forEach((term) => {
+      if (termY > pageHeight - 27) {
         pdf.addPage();
-        y = 20;
+        termY = 25;
       }
 
-      pdf.text(lines, margin, y);
-      y += lines.length * 4 + 2;
+      addPdfText(pdf, term, margin, termY, {
+        size: 7.5,
+        color: grey
+      });
+
+      termY += 5;
     });
 
-    y += 5;
+    // Footer on every page
+    const pageCount = pdf.getNumberOfPages();
 
-    if (y > 285) {
-      pdf.addPage();
-      y = 20;
+    for (let page = 1; page <= pageCount; page++) {
+      pdf.setPage(page);
+
+      pdf.setDrawColor(220, 227, 233);
+      pdf.line(margin, pageHeight - 17, pageWidth - margin, pageHeight - 17);
+
+      addPdfText(pdf, COMPANY_NAME, margin, pageHeight - 11, {
+        size: 7,
+        style: "bold",
+        color: navy
+      });
+
+      addPdfText(pdf, `Call ${COMPANY_PHONE}`, pageWidth / 2, pageHeight - 11, {
+        size: 7,
+        color: grey,
+        extra: { align: "center" }
+      });
+
+      addPdfText(pdf, `Page ${page} of ${pageCount}`, pageWidth - margin, pageHeight - 11, {
+        size: 7,
+        color: grey,
+        extra: { align: "right" }
+      });
     }
-
-    pdf.setFont("helvetica", "bold");
-    pdf.setFontSize(9);
-
-    pdf.text(
-      "Thank you for choosing Mabati Rolling Mills.",
-      margin,
-      y
-    );
 
     return pdf;
   }
 
-  /* 14. PDF TO BASE64 */
-
   function pdfToBase64(pdf) {
     const dataUri = pdf.output("datauristring");
-    return dataUri.split(",")[1];
+    return dataUri.substring(dataUri.indexOf(",") + 1);
   }
 
-  /* 15. SUBMIT AND FINALISE QUOTATION */
+  function downloadPdf(pdf, customerName) {
+    const safeName = String(customerName || "Customer")
+      .replace(/[^\p{L}\p{N} ._-]+/gu, "")
+      .replace(/\s+/g, " ")
+      .trim() || "Customer";
 
-  async function submitInvoice(event) {
+    pdf.save(`${safeName} - MRM Proforma Invoice.pdf`);
+  }
+
+  function showInvoiceResults(data, customer) {
+    if (!elements.results) return;
+
+    const invoiceUrl = data.invoiceUrl;
+    const message = [
+      "Hello MRM Team,",
+      "",
+      `Please find my proforma invoice ${data.invoiceNumber}.`,
+      `Customer: ${customer.name}`,
+      `Amount: ${money(data.total)}`,
+      "",
+      invoiceUrl
+    ].join("\n");
+
+    const whatsappUrl =
+      `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(message)}`;
+
+    elements.results.innerHTML = `
+      <div style="padding:20px;border:1px solid #d7e5dc;border-radius:12px;background:#f5fbf7">
+        <h3 style="margin:0 0 10px;color:#176b45">Invoice created successfully</h3>
+        <p><strong>Invoice number:</strong> ${escapeHtml(data.invoiceNumber)}</p>
+        <p><strong>Customer:</strong> ${escapeHtml(customer.name)}</p>
+        <p><strong>Total:</strong> ${money(data.total)}</p>
+        <p><strong>Status:</strong> PENDING</p>
+        <p style="margin-top:14px">
+          <a href="${escapeHtml(invoiceUrl)}" target="_blank" rel="noopener"
+             style="display:inline-block;padding:11px 16px;background:#092b49;color:#fff;text-decoration:none;border-radius:7px;margin:4px">
+            Open Invoice
+          </a>
+          <a href="${escapeHtml(whatsappUrl)}" target="_blank" rel="noopener"
+             style="display:inline-block;padding:11px 16px;background:#16834a;color:#fff;text-decoration:none;border-radius:7px;margin:4px">
+            Share on WhatsApp
+          </a>
+        </p>
+        <p style="font-size:12px;color:#657585;word-break:break-all">
+          Public invoice link: ${escapeHtml(invoiceUrl)}
+        </p>
+      </div>
+    `;
+
+    elements.results.style.display = "block";
+    elements.results.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
+
+  async function handleInvoiceSubmit(event) {
     event.preventDefault();
 
-    const form = document.getElementById("mrmInvoiceForm");
+    if (isSubmitting) return;
 
-    if (!form.reportValidity()) return;
+    clearMessage();
 
-    const items = getSelectedItems();
-
-    if (!items.length) {
-      showMessage(
-        "Please select at least one valid roofing product and specification.",
-        "error"
-      );
+    if (!elements.customerName.value.trim()) {
+      showMessage("Enter the customer's name.", "error");
+      elements.customerName.focus();
       return;
     }
 
-    const customerName = document
-      .getElementById("mrmCustomerName")
-      .value.trim();
-
-    const customerPhone = document
-      .getElementById("mrmCustomerPhone")
-      .value.trim();
-
-    const customerLocation = document
-      .getElementById("mrmCustomerLocation")
-      .value.trim();
-
-    if (
-      !customerName ||
-      customerName.length > 120 ||
-      !customerPhone ||
-      customerPhone.length > 30 ||
-      !customerLocation ||
-      customerLocation.length > 200
-    ) {
-      showMessage(
-        "Please check all customer details and try again.",
-        "error"
-      );
+    if (!elements.customerPhone.value.trim()) {
+      showMessage("Enter the customer's phone number.", "error");
+      elements.customerPhone.focus();
       return;
     }
 
-    setLoading(true);
+    if (!elements.customerLocation.value.trim()) {
+      showMessage("Enter the customer's location.", "error");
+      elements.customerLocation.focus();
+      return;
+    }
 
-    const results = document.getElementById("mrmInvoiceResults");
-
-    results.style.display = "none";
-    results.innerHTML = "";
+    let items;
 
     try {
-      showMessage(
-        "Loading MRM company logo...",
-        "info"
-      );
+      items = collectInvoiceItems();
+    } catch (error) {
+      showMessage(error.message, "error");
+      return;
+    }
 
-      await loadCompanyLogo();
+    const customer = {
+      name: elements.customerName.value.trim(),
+      phone: elements.customerPhone.value.trim(),
+      location: elements.customerLocation.value.trim()
+    };
 
-      showMessage(
-        "Step 1 of 3: Verifying customer details and product prices...",
-        "info"
-      );
+    const invoiceDate = localDate();
 
-      const prepared = await apiRequest(
-        "/api/invoices/prepare",
-        {
-          method: "POST",
-          body: JSON.stringify({
-            customerName,
-            customerPhone,
-            customerLocation,
-            items
-          })
-        }
-      );
+    isSubmitting = true;
 
-      const invoiceNumber = prepared.invoiceNumber;
-      const publicToken = prepared.token;
+    if (elements.createButton) {
+      elements.createButton.disabled = true;
+      elements.createButton.textContent = "Preparing invoice...";
+    }
 
-      if (!invoiceNumber || !publicToken) {
-        throw new Error(
-          "The server did not return a valid quotation reference."
-        );
-      }
+    try {
+      showMessage("Verifying customer details and product prices...");
 
-      if (!Array.isArray(prepared.items) || !prepared.items.length) {
-        throw new Error(
-          "The server did not return the verified quotation items."
-        );
-      }
-
-      showMessage(
-        "Step 2 of 3: Generating your roofing quotation PDF...",
-        "info"
-      );
-
-      const pdf = createInvoicePDF(prepared);
-      const base64PDF = pdfToBase64(pdf);
-
-      showMessage(
-        "Step 3 of 3: Saving your quotation securely...",
-        "info"
-      );
-
-      const finalized = await apiRequest(
-        "/api/invoices/finalize",
-        {
-          method: "POST",
-          body: JSON.stringify({
-            token: publicToken,
-            pdfBase64: base64PDF
-          })
-        }
-      );
-
-      const publicUrl = finalized.invoiceUrl;
-
-      if (!publicUrl) {
-        throw new Error(
-          "The server saved the quotation but did not return its public link."
-        );
-      }
-
-      /*
-       * CUSTOMER-NAME PDF FILENAME
-       * Example:
-       * Samuel Mwangi - MRM Proforma Invoice.pdf
-       */
-      const customerFilename = createCustomerFilename(customerName);
-
-      const pdfBlob = pdf.output("blob");
-      const downloadUrl = URL.createObjectURL(pdfBlob);
-
-      const whatsappMessage =
-        `Hello MRM Team,\n\n` +
-        `I have successfully generated a roofing quotation.\n\n` +
-        `Please find my quotation using the link below:\n\n` +
-        `${publicUrl}\n\n` +
-        `Kindly assist me with the next steps.\n\n` +
-        `Thank you.`;
-
-      results.innerHTML = `
-        <h3>ROOFING QUOTATION GENERATED SUCCESSFULLY</h3>
-
-        <p>
-          <strong>Quotation Number:</strong>
-          ${escapeHTML(invoiceNumber)}
-        </p>
-
-        <p>
-          <strong>Customer:</strong>
-          ${escapeHTML(customerName)}
-        </p>
-
-        <p>
-          <strong>PDF Filename:</strong>
-          ${escapeHTML(customerFilename)}
-        </p>
-
-        <p>
-          <strong>Total:</strong>
-          ${money(prepared.total)}
-        </p>
-
-        <p>
-          <strong>Status:</strong>
-          PENDING
-        </p>
-
-        <p>
-          Your roofing quotation has been generated and saved securely.
-          You can download the PDF, view it online or share its link
-          with the MRM team through WhatsApp.
-        </p>
-
-        <a
-          id="mrmDownloadInvoiceLink"
-          href="${downloadUrl}"
-          download="${escapeHTML(customerFilename)}">
-          DOWNLOAD QUOTATION
-        </a>
-
-        <a
-          href="${escapeHTML(publicUrl)}"
-          target="_blank"
-          rel="noopener">
-          VIEW QUOTATION ONLINE
-        </a>
-
-        <a
-          class="mrm-whatsapp"
-          href="${createWhatsAppLink(whatsappMessage)}"
-          target="_blank"
-          rel="noopener">
-          SHARE QUOTATION VIA WHATSAPP
-        </a>
-      `;
-
-      results.style.display = "block";
-
-      const downloadLink = document.getElementById(
-        "mrmDownloadInvoiceLink"
-      );
-
-      if (downloadLink) {
-        downloadLink.click();
-      }
-
-      showMessage(
-        "Your roofing quotation has been generated. Your customer-named PDF download is starting.",
-        "success"
-      );
-
-      results.scrollIntoView({
-        behavior: "smooth",
-        block: "start"
+      const prepared = await apiRequest("/api/invoices/prepare", {
+        method: "POST",
+        body: JSON.stringify({
+          customerName: customer.name,
+          customerPhone: customer.phone,
+          customerLocation: customer.location,
+          invoiceDate,
+          items
+        })
       });
 
+      if (!prepared.token || !prepared.invoiceNumber || !Array.isArray(prepared.items)) {
+        throw new Error("The server returned incomplete invoice details.");
+      }
+
+      showMessage("Generating the professional PDF invoice...");
+
+      const pdf = await createInvoicePdf(prepared, customer, invoiceDate);
+      const pdfBase64 = pdfToBase64(pdf);
+
+      showMessage("Saving the PDF securely...");
+
+      const finalised = await apiRequest("/api/invoices/finalize", {
+        method: "POST",
+        body: JSON.stringify({
+          token: prepared.token,
+          pdfBase64
+        })
+      });
+
+      if (!finalised.invoiceUrl) {
+        throw new Error("The invoice was saved but no public link was returned.");
+      }
+
+      downloadPdf(pdf, customer.name);
+
+      showInvoiceResults({
+        ...prepared,
+        ...finalised,
+        total: prepared.total
+      }, customer);
+
+      showMessage("Invoice created, saved and downloaded successfully.", "success");
+
     } catch (error) {
-      console.error("MRM quotation error:", error);
-
-      showMessage(
-        error.message ||
-        "Quotation generation failed. Please try again.",
-        "error"
-      );
-
+      console.error("MRM invoice error:", error);
+      showMessage(error.message || "Unable to create the invoice. Please try again.", "error");
     } finally {
-      setLoading(false);
+      isSubmitting = false;
+
+      if (elements.createButton) {
+        elements.createButton.disabled = false;
+        elements.createButton.textContent = "Create Proforma Invoice";
+      }
     }
   }
 
-  /* 16. INITIALISE QUOTATION SYSTEM */
+  function initialiseInvoiceSystem() {
+    const required = [
+      elements.form,
+      elements.customerName,
+      elements.customerPhone,
+      elements.customerLocation,
+      elements.items,
+      elements.createButton
+    ];
 
-  async function initialiseInvoiceSystem() {
-    addStyles();
-
-    createInvoiceSection();
-    addNavigationLink();
-
-    const addButton = document.getElementById(
-      "mrmAddInvoiceItem"
-    );
-
-    const form = document.getElementById(
-      "mrmInvoiceForm"
-    );
-
-    if (!addButton || !form) {
-      console.error("MRM quotation form could not be initialised.");
+    if (required.some((element) => !element)) {
+      console.error("MRM invoice system: one or more required HTML elements are missing.");
       return;
     }
 
-    addButton.addEventListener("click", addInvoiceItem);
-    form.addEventListener("submit", submitInvoice);
-
-    try {
-      showMessage(
-        "Loading roofing product catalogue...",
-        "info"
-      );
-
-      await loadCatalogue();
-
-      showMessage(
-        "Product catalogue loaded. You can now get your roofing quotation.",
-        "success"
-      );
-
-    } catch (error) {
-      console.error("MRM catalogue error:", error);
-
-      showMessage(
-        `Could not load the product catalogue: ${error.message}`,
-        "error"
-      );
+    if (elements.results) {
+      elements.results.style.display = "none";
     }
+
+    if (elements.addItem) {
+      elements.addItem.addEventListener("click", addInvoiceRow);
+    }
+
+    elements.form.addEventListener("submit", handleInvoiceSubmit);
+
+    loadCatalogue()
+      .then(() => {
+        elements.items.innerHTML = "";
+        addInvoiceRow();
+        showMessage("Invoice system is ready.", "success");
+      })
+      .catch((error) => {
+        console.error("MRM catalogue error:", error);
+        showMessage(error.message || "Could not load the product catalogue.", "error");
+
+        if (elements.createButton) {
+          elements.createButton.disabled = true;
+        }
+      });
   }
 
-  /* 17. START SYSTEM */
-
   if (document.readyState === "loading") {
-    document.addEventListener(
-      "DOMContentLoaded",
-      initialiseInvoiceSystem
-    );
+    document.addEventListener("DOMContentLoaded", initialiseInvoiceSystem);
   } else {
     initialiseInvoiceSystem();
   }
-
 })();
